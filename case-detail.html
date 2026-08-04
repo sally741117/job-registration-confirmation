@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>案件詳情</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script defer src="./services.js"></script>
+  <script defer src="./case-detail.js"></script>
+</head>
+<body class="admin-body">
+  <main class="shell admin-shell">
+    <section id="missingView" class="success hidden">
+      <div class="success-panel">
+        <h1 id="missingTitle">案件不存在</h1>
+        <p id="missingText"></p>
+        <a class="secondary link-button" href="./admin.html">返回案件列表</a>
+      </div>
+    </section>
+
+    <section id="detailView" class="hidden">
+      <header id="caseHeader" class="case-detail-header"></header>
+
+      <section class="card">
+        <div class="section-title"><span>1</span><h2>案件目前進度</h2></div>
+        <div id="progressPanel" class="process-steps"></div>
+        <div class="action-row">
+          <a id="openFormLink" class="secondary link-button" target="_blank" rel="noreferrer">開啟公司填寫頁</a>
+          <button id="copyFormLinkBtn" class="secondary" type="button">複製公司填寫連結</button>
+          <button id="reopenBtn" class="danger" type="button">重新開放修改</button>
+          <button id="downloadInternalPdfBtn" class="secondary" type="button">下載內部通知單預覽</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-title"><span>2</span><h2>公司最新回覆</h2></div>
+        <div id="latestResponseMeta" class="identity-grid"></div>
+        <div id="latestResponseContent" class="summary"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-title"><span>3</span><h2>回覆版本紀錄</h2></div>
+        <div id="submissionHistory" class="version-list"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-title"><span>4</span><h2>修改案件資料</h2></div>
+        <form id="editCaseForm" novalidate>
+          <input type="hidden" name="caseId">
+          <div class="grid two">
+            <label>公司名稱 <b>必填</b><input name="companyName"></label>
+            <label>工作地點 <b>必填</b><input name="workAddress"></label>
+            <label>本次求才人數（選填）<input name="recruitmentCount" type="number" min="1" step="1" placeholder="尚未確認可先留白"></label>
+            <label>聯絡人<input name="contactName"></label>
+            <label>聯絡電話<input name="contactPhone" inputmode="tel"></label>
+            <label>分機<input name="extension" inputmode="numeric"></label>
+            <label>求才時間<input name="recruitmentDate" type="date"></label>
+            <label>產業類別<input name="industry"></label>
+            <label>求才薪資下限<span class="money"><input name="salaryMin" type="number" min="0" step="1"><em>元</em></span></label>
+            <label>求才薪資上限<span class="money"><input name="salaryMax" type="number" min="0" step="1"><em>元</em></span></label>
+            <label>公開求才電話<input name="publicPhone" inputmode="tel"></label>
+          </div>
+          <fieldset>
+            <legend>承辦仲介公司</legend>
+            <div class="choice-row">
+              <label><input type="radio" name="agencyCompany" value="頂尖國際人力資源股份有限公司">頂尖國際人力資源股份有限公司</label>
+              <label><input type="radio" name="agencyCompany" value="家樂福人才國際有限公司">家樂福人才國際有限公司</label>
+            </div>
+          </fieldset>
+          <button class="primary" type="submit">儲存至此案件</button>
+        </form>
+      </section>
+
+      <section class="card">
+        <div class="section-title"><span>5</span><h2 id="uploadTitle">上傳求才內容</h2></div>
+        <div id="uploadCaseInfo" class="notice-bind-box"></div>
+        <label class="upload-box" id="noticeDropZone">拖曳或選擇檔案
+          <input id="noticeFileInput" type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,image/jpeg,image/png,image/webp,application/pdf">
+        </label>
+        <div id="fileSummary" class="summary hidden"></div>
+        <div id="uploadProgress" class="hint"></div>
+        <div class="action-row">
+          <button id="confirmUploadBtn" class="primary hidden" type="button">確認上傳至此案件</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-title"><span>6</span><h2>已上傳求才內容</h2></div>
+        <div id="noticeResult" class="summary"></div>
+        <div id="noticePreview"></div>
+        <div id="noticeHistory" class="version-list"></div>
+        <div class="action-row">
+          <a id="openNoticeLinkBtn" class="secondary link-button" target="_blank" rel="noreferrer">預覽通知</a>
+          <button id="copyNoticeLinkBtn" class="secondary" type="button">複製公司查看連結</button>
+          <button id="deleteNoticeBtn" class="danger" type="button">刪除目前通知</button>
+          <a class="secondary link-button" href="./admin.html">返回案件列表</a>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-title"><span>7</span><h2>公司查看紀錄</h2></div>
+        <div id="viewRecord" class="summary"></div>
+      </section>
+    </section>
+
+    <section id="pdfTemplate" class="pdf-sheet" aria-hidden="true"></section>
+  </main>
+</body>
+</html>

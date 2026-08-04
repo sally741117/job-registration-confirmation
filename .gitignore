@@ -1,0 +1,12 @@
+backup-*/
+tmp/
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.tmp
+*.log
+*.mjs
+.DS_Store
+Thumbs.db

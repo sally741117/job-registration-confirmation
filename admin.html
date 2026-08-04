@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>建立求才確認案件</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script defer src="./services.js"></script>
+  <script defer src="./admin.js"></script>
+</head>
+<body class="admin-body">
+  <main class="shell admin-shell">
+    <header class="page-header admin-header">
+      <p class="eyebrow">仲介端管理後台</p>
+      <h1>建立求才確認案件</h1>
+      <p>建立案件後，系統會產生公司專屬填寫連結。公司送出後，請從案件詳情頁查看回覆並上傳求才內容。</p>
+      <div id="modeBanner" class="mode-banner"></div>
+      <div class="action-row refresh-row">
+        <button id="testConnectionBtn" class="secondary" type="button">測試 Google Apps Script 連線</button>
+        <button id="useLocalModeBtn" class="secondary" type="button">改用本機測試模式</button>
+        <button id="refreshListBtn" class="secondary" type="button">重新整理</button>
+        <span id="lastUpdatedText" class="hint">最後更新：尚未更新</span>
+      </div>
+      <div id="connectionResult" class="hint"></div>
+    </header>
+
+    <section class="card">
+      <div class="section-title"><span>1</span><h2>建立案件</h2></div>
+      <form id="caseForm" novalidate>
+        <div class="grid two">
+          <label>公司名稱 <b>必填</b><input name="companyName"></label>
+          <label>工作地點 <b>必填</b><input name="workAddress"></label>
+          <label>本次求才人數（選填）<input name="recruitmentCount" type="number" min="1" step="1" placeholder="尚未確認可先留白"></label>
+          <label>聯絡人<input name="contactName"></label>
+          <label>聯絡電話<input name="contactPhone" inputmode="tel"></label>
+          <label>分機<input name="extension" inputmode="numeric"></label>
+          <label>預計求才時間<input name="recruitmentDate" type="date"></label>
+          <label>產業類別<input name="industry"></label>
+          <label>求才薪資下限<span class="money"><input name="salaryMin" type="number" min="0" step="1"><em>元</em></span></label>
+          <label>求才薪資上限<span class="money"><input name="salaryMax" type="number" min="0" step="1"><em>元</em></span></label>
+          <label>對外公開求才電話<input name="publicPhone" inputmode="tel"></label>
+        </div>
+        <fieldset>
+          <legend>承辦仲介公司</legend>
+          <div class="choice-row">
+            <label><input type="radio" name="agencyCompany" value="頂尖國際人力資源股份有限公司" checked>頂尖國際人力資源股份有限公司</label>
+            <label><input type="radio" name="agencyCompany" value="家樂福人才國際有限公司">家樂福人才國際有限公司</label>
+          </div>
+        </fieldset>
+        <button class="primary" type="submit">建立案件並產生連結</button>
+      </form>
+    </section>
+
+    <section id="createdPanel" class="card hidden">
+      <div class="section-title"><span>✓</span><h2>案件已建立</h2></div>
+      <div id="createdInfo" class="summary"></div>
+      <div class="action-row">
+        <button class="secondary" id="copyCreatedLink" type="button">複製公司填寫連結</button>
+        <a class="secondary link-button" id="openCreatedLink" target="_blank" rel="noreferrer">開啟公司填寫頁</a>
+        <button class="secondary" id="resetFormBtn" type="button">返回建立下一筆案件</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title"><span>2</span><h2>案件列表</h2></div>
+      <p class="hint">新回覆會自動排在最上方，點進案件詳情後會標記為已查看。</p>
+      <div id="caseList" class="case-list"></div>
+    </section>
+  </main>
+</body>
+</html>

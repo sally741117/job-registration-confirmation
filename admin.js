@@ -1,0 +1,205 @@
+const caseForm = document.querySelector("#caseForm");
+const createdPanel = document.querySelector("#createdPanel");
+const createdInfo = document.querySelector("#createdInfo");
+const copyCreatedLink = document.querySelector("#copyCreatedLink");
+const openCreatedLink = document.querySelector("#openCreatedLink");
+const resetFormBtn = document.querySelector("#resetFormBtn");
+const caseList = document.querySelector("#caseList");
+const modeBanner = document.querySelector("#modeBanner");
+const refreshListBtn = document.querySelector("#refreshListBtn");
+const lastUpdatedText = document.querySelector("#lastUpdatedText");
+const testConnectionBtn = document.querySelector("#testConnectionBtn");
+const useLocalModeBtn = document.querySelector("#useLocalModeBtn");
+const connectionResult = document.querySelector("#connectionResult");
+
+let createdCase = null;
+
+const $ = (selector, root = document) => root.querySelector(selector);
+const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+
+function selected(name, root = caseForm) {
+  return $(`[name="${name}"]:checked`, root)?.value || "";
+}
+
+function clearErrors(root = document) {
+  $$(".error-text", root).forEach((el) => el.remove());
+  $$(".field-error", root).forEach((el) => el.classList.remove("field-error"));
+}
+
+function addError(target, message) {
+  target.classList.add("field-error");
+  const error = document.createElement("div");
+  error.className = "error-text";
+  error.textContent = message;
+  target.closest("label").appendChild(error);
+}
+
+function collectCaseInput(root = caseForm) {
+  return {
+    companyName: root.companyName.value.trim(),
+    workAddress: root.workAddress.value.trim(),
+    recruitmentCount: root.recruitmentCount.value.trim(),
+    contactName: root.contactName.value.trim(),
+    contactPhone: root.contactPhone.value.trim(),
+    extension: root.extension.value.trim(),
+    recruitmentDate: root.recruitmentDate.value,
+    industry: root.industry.value.trim(),
+    salaryMin: root.salaryMin.value.trim(),
+    salaryMax: root.salaryMax.value.trim(),
+    publicPhone: root.publicPhone.value.trim(),
+    agencyCompany: selected("agencyCompany", root)
+  };
+}
+
+function validate(input, root = caseForm) {
+  clearErrors(root);
+  let valid = true;
+  const fail = (target, message) => {
+    valid = false;
+    addError(target, message);
+  };
+  if (!input.companyName) fail(root.companyName, "請填寫公司名稱。");
+  if (!input.workAddress) fail(root.workAddress, "請填寫工作地點。");
+  if (input.recruitmentCount && !helpers.isPositiveInteger(input.recruitmentCount)) fail(root.recruitmentCount, "求才人數有輸入時只能是正整數。");
+  if (input.salaryMin && !/^\d+$/.test(input.salaryMin)) fail(root.salaryMin, "薪資下限只能輸入數字。");
+  if (input.salaryMax && !/^\d+$/.test(input.salaryMax)) fail(root.salaryMax, "薪資上限只能輸入數字。");
+  if (input.salaryMin && input.salaryMax && Number(input.salaryMin) > Number(input.salaryMax)) fail(root.salaryMax, "薪資上限不可低於薪資下限。");
+  return valid;
+}
+
+function renderModeBanner() {
+  const suffix = CONFIG.ACTIVE_STORAGE_MODE === "local"
+    ? "<span>本機測試模式無法跨裝置使用，正式傳給公司前需完成線上後端設定。</span>"
+    : "";
+  modeBanner.innerHTML = `<strong>${helpers.modeMessage()}</strong>${suffix}`;
+  modeBanner.className = `mode-banner ${CONFIG.ACTIVE_STORAGE_MODE}`;
+  useLocalModeBtn.classList.toggle("hidden", CONFIG.ACTIVE_STORAGE_MODE === "local");
+}
+
+function renderCreated(caseRecord) {
+  const url = helpers.formUrl(caseRecord.caseId);
+  createdInfo.innerHTML = `
+    <div><strong>案件編號</strong><span>${caseRecord.caseId}</span></div>
+    <div><strong>公司名稱</strong><span>${caseRecord.companyName}</span></div>
+    <div><strong>公司填寫連結</strong><span class="breakable">${url}</span></div>
+    <div><strong>目前狀態</strong><span>${helpers.statusLabel(caseRecord.status)}</span></div>
+  `;
+  openCreatedLink.href = url;
+  createdPanel.classList.remove("hidden");
+}
+
+async function copyText(text) {
+  await navigator.clipboard.writeText(text);
+}
+
+function detailUrl(caseId) {
+  const url = new URL(`case-detail.html?caseId=${encodeURIComponent(caseId)}`, window.location.href);
+  if (CONFIG.ACTIVE_STORAGE_MODE === "local") url.searchParams.set("storage", "local");
+  return url.href;
+}
+
+function workflowText(item) {
+  if (item.status === CASE_STATUS.pending) return "待公司填寫";
+  if (item.status === CASE_STATUS.submitted) return "公司已回覆，待整理與上傳求才內容";
+  if (item.status === CASE_STATUS.preparing_notice) return "求才通知製作中";
+  if (item.status === CASE_STATUS.notice_ready) return item.noticeViewed ? "公司已查看通知" : "通知已上傳，待公司查看";
+  if (item.status === CASE_STATUS.revision_open) return "已重新開放修改，待公司重新送出";
+  return helpers.statusLabel(item.status);
+}
+
+async function renderCaseList() {
+  let cases = [];
+  try {
+    cases = await caseService.listCases();
+  } catch (error) {
+    console.error("案件列表更新失敗", error);
+    caseList.innerHTML = `<p class="empty">案件列表更新失敗，請確認 Google Apps Script URL 是否已設定。</p>`;
+    return;
+  }
+  lastUpdatedText.textContent = `最後更新：${helpers.displayDateTime(new Date().toISOString())}`;
+  if (!cases.length) {
+    caseList.innerHTML = `<p class="empty">目前尚未建立案件。</p>`;
+    return;
+  }
+  caseList.innerHTML = cases.map((item) => {
+    const latest = helpers.latestSubmission(item);
+    return `
+      <article class="case-item admin-list-item">
+        <div><small>公司名稱</small><strong>${item.companyName}</strong></div>
+        <div><small>案件編號</small><span class="breakable">${item.caseId}</span></div>
+        <div><small>工作地點</small><span>${item.workAddress || ""}</span></div>
+        <div><small>建立時間</small><span>${helpers.displayDateTime(item.createdAt)}</span></div>
+        <div><small>最新回覆時間</small><span>${helpers.displayDateTime(latest?.submittedAt) || "尚未回覆"}</span></div>
+        <div><small>回覆查看</small><span class="unread-badge ${item.hasUnreadResponse ? "new" : ""}">${helpers.responseBadge(item)}</span></div>
+        <div><small>正式通知狀態</small><span>${helpers.noticeStatusLabel(item)}</span></div>
+        <div><small>目前狀態</small><span class="status ${item.status}">${helpers.statusLabel(item.status)}</span></div>
+        <div class="action-row">
+          ${(item.status === CASE_STATUS.pending || item.status === CASE_STATUS.revision_open) ? `<button class="secondary" data-action="copyForm" data-id="${item.caseId}" type="button">複製填寫連結</button><a class="secondary link-button" href="${helpers.formUrl(item.caseId)}" target="_blank" rel="noreferrer">開啟公司填寫頁</a>` : ""}
+          <a class="primary link-button" href="${detailUrl(item.caseId)}">開啟案件詳情</a>
+          ${item.status === CASE_STATUS.notice_ready ? `<button class="secondary" data-action="copyNotice" data-id="${item.caseId}" type="button">複製通知查看網址</button><a class="secondary link-button" href="${helpers.noticeUrl(item)}" target="_blank" rel="noreferrer">開啟通知頁</a>` : ""}
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+caseForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const input = collectCaseInput();
+  if (!validate(input)) return;
+  try {
+    createdCase = await caseService.createCase(input);
+    renderCreated(createdCase);
+    await renderCaseList();
+  } catch (error) {
+    console.error("建立案件失敗", error);
+    addError(caseForm.companyName, `建立案件失敗：${error.message || "請確認 Google Apps Script URL 是否已設定。"}`);
+    useLocalModeBtn.classList.remove("hidden");
+  }
+});
+
+copyCreatedLink.addEventListener("click", async () => {
+  if (!createdCase) return;
+  await copyText(helpers.formUrl(createdCase.caseId));
+});
+
+resetFormBtn.addEventListener("click", () => {
+  caseForm.reset();
+  createdPanel.classList.add("hidden");
+  createdCase = null;
+});
+
+caseList.addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-action]");
+  if (!button) return;
+  const caseRecord = await caseService.getCase(button.dataset.id);
+  if (!caseRecord) return;
+  if (button.dataset.action === "copyForm") await copyText(helpers.formUrl(caseRecord.caseId));
+  if (button.dataset.action === "copyNotice") await copyText(helpers.noticeUrl(caseRecord));
+});
+
+refreshListBtn.addEventListener("click", renderCaseList);
+testConnectionBtn.addEventListener("click", async () => {
+  testConnectionBtn.disabled = true;
+  connectionResult.textContent = "正在測試連線...";
+  try {
+    const result = await remoteClient.testConnection();
+    connectionResult.textContent = result.status;
+  } finally {
+    testConnectionBtn.disabled = false;
+  }
+});
+useLocalModeBtn.addEventListener("click", () => {
+  const url = new URL(window.location.href);
+  url.searchParams.set("storage", "local");
+  window.location.href = url.href;
+});
+
+const requestedCaseId = helpers.getCaseIdFromUrl();
+if (requestedCaseId) {
+  window.location.replace(detailUrl(requestedCaseId));
+} else {
+  renderModeBanner();
+  renderCaseList();
+  window.setInterval(renderCaseList, 45000);
+}

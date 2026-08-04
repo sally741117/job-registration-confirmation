@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>求才登記資料確認表</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script defer src="./services.js"></script>
+  <script defer src="./form.js"></script>
+</head>
+<body>
+  <main class="shell">
+    <section id="missingView" class="success hidden"><div class="success-panel"><h1 id="missingTitle">案件提示</h1><p id="missingText"></p><a class="secondary link-button" href="./admin.html">返回仲介端</a></div></section>
+    <section id="completedView" class="success hidden"><div class="success-panel"><p class="eyebrow">已完成</p><h1>此案件已完成填寫</h1><p>此專屬連結已送出確認資料。承辦人員完成正式求才通知後，會再提供專屬查看連結。</p></div></section>
+    <section id="formView" class="hidden">
+      <header class="page-header">
+        <p class="eyebrow">公司端確認表</p>
+        <h1>求才登記資料確認表</h1>
+        <p>請協助確認以下工作制度與相關資料。填寫完成後請按「送出確認」，系統將依本次填寫內容產生求才通知單。</p>
+        <div id="caseInfo" class="case-info" aria-label="案件資訊"></div>
+        <p class="hint">標示「必填」的欄位請務必完成。</p>
+      </header>
+      <form id="jobForm" novalidate>
+        <section class="card">
+          <div class="section-title"><span>一</span><h2>一般工作時間</h2></div>
+          <fieldset><legend>目前一般工作時間是否為 08：00～17：00？ <b>必填</b></legend><div class="choice-row"><label><input type="radio" name="standardTimeStatus" value="default" checked>正確，不需修改</label><label><input type="radio" name="standardTimeStatus" value="custom">需要修改</label></div></fieldset>
+          <div id="customTime" class="conditional grid two"><label>上班時間 <b>必填</b><input name="standardStart" type="time" value="08:00"></label><label>下班時間 <b>必填</b><input name="standardEnd" type="time" value="17:00"></label></div>
+        </section>
+        <section class="card">
+          <div class="section-title"><span>二</span><h2>輪班制度</h2></div>
+          <fieldset><legend>公司是否有輪班制度？ <b>必填</b></legend><div class="choice-grid"><label><input type="radio" name="shiftType" value="沒有輪班，僅固定日班" checked>沒有輪班，僅固定日班</label><label><input type="radio" name="shiftType" value="有輪班制度">有輪班制度</label><label><input type="radio" name="shiftType" value="有部分工時人員">有部分工時人員</label><label><input type="radio" name="shiftType" value="同時有輪班及部分工時">同時有輪班及部分工時</label><label><input type="radio" name="shiftType" value="其他情形">其他情形</label></div></fieldset>
+          <div id="shiftBlock" class="conditional subpanel">
+            <fieldset><legend>班別 <b>必填</b></legend><div class="choice-row"><label><input type="checkbox" name="shiftName" value="日班">日班</label><label><input type="checkbox" name="shiftName" value="中班">中班</label><label><input type="checkbox" name="shiftName" value="夜班">夜班</label></div></fieldset>
+            <div id="shiftTimes" class="stack"></div>
+            <fieldset><legend>輪班方式 <b>必填</b></legend><div class="choice-grid compact"><label><input type="radio" name="rotationMethod" value="二班制">二班制</label><label><input type="radio" name="rotationMethod" value="三班制">三班制</label><label><input type="radio" name="rotationMethod" value="四班二輪">四班二輪</label><label><input type="radio" name="rotationMethod" value="其他輪班方式">其他輪班方式</label></div></fieldset>
+            <label id="rotationOtherWrap" class="conditional">其他輪班方式說明 <b>必填</b><input name="rotationOther"></label>
+            <label>補充說明<textarea name="shiftNote" rows="3" placeholder="例如：每週輪班一次、每月排班或依訂單狀況調整。"></textarea></label>
+          </div>
+          <div id="partTimeBlock" class="conditional subpanel"><div class="subhead"><h3>部分工時時段</h3><button type="button" class="secondary" id="addPartTime">新增時段</button></div><div id="partTimeList" class="stack"></div></div>
+        </section>
+        <section class="card">
+          <div class="section-title"><span>三</span><h2>休假方式</h2></div>
+          <p class="notice">休假原則依勞動基準法及公司實際排班制度辦理。</p>
+          <fieldset><legend>請選擇實際休假方式 <b>必填</b></legend><div class="choice-row"><label><input type="radio" name="leaveType" value="週休二日" checked>週休二日</label><label><input type="radio" name="leaveType" value="輪休">輪休</label><label><input type="radio" name="leaveType" value="排休">排休</label><label><input type="radio" name="leaveType" value="其他">其他</label></div></fieldset>
+          <div id="weekendBlock" class="conditional"><fieldset><legend>是否固定休星期六、星期日？ <b>必填</b></legend><div class="choice-row"><label><input type="radio" name="weekendFixed" value="是" checked>是</label><label><input type="radio" name="weekendFixed" value="否">否</label></div></fieldset><label id="weekendNoteWrap" class="conditional">補充說明 <b>必填</b><input name="weekendNote"></label></div>
+          <div id="rotationLeaveBlock" class="conditional grid two"><label>工作幾日 <b>必填</b><input name="workDays" type="number" min="1" step="1"></label><label>休息幾日 <b>必填</b><input name="restDays" type="number" min="1" step="1"></label></div>
+          <div id="monthlyLeaveBlock" class="conditional"><label>每月休假幾日 <b>必填</b><input name="monthlyLeaveDays" type="number" min="1" step="1"></label></div>
+          <div id="otherLeaveBlock" class="conditional"><label>休假方式說明 <b>必填</b><textarea name="leaveOther" rows="3"></textarea></label></div>
+        </section>
+        <section class="card">
+          <div class="section-title"><span>四</span><h2>友善職場設施</h2></div>
+          <fieldset><legend>公司是否設置哺乳或集乳室？ <b>必填</b></legend><div class="choice-row"><label><input type="radio" name="lactationRoom" value="有">有</label><label><input type="radio" name="lactationRoom" value="無" checked>無</label></div></fieldset>
+          <fieldset><legend>公司是否提供托兒服務？ <b>必填</b></legend><div class="choice-row"><label><input type="radio" name="childcare" value="有">有</label><label><input type="radio" name="childcare" value="無" checked>無</label></div></fieldset>
+          <div id="childcareOptions" class="conditional subpanel"><fieldset><legend>托兒服務項目 <b>必填</b></legend><div class="choice-grid"><label><input type="checkbox" name="childcareItems" value="公司自設或簽約幼兒園">公司自設或簽約幼兒園</label><label><input type="checkbox" name="childcareItems" value="托嬰中心">托嬰中心</label><label><input type="checkbox" name="childcareItems" value="提供托兒津貼">提供托兒津貼</label><label><input type="checkbox" name="childcareItems" value="其他">其他</label></div></fieldset><label id="childcareOtherWrap" class="conditional">其他托兒服務說明 <b>必填</b><input name="childcareOther"></label></div>
+        </section>
+        <section class="card">
+          <div class="section-title"><span>五</span><h2>送出前確認</h2></div>
+          <div id="summary" class="summary"></div>
+          <label class="confirm"><input type="checkbox" name="finalConfirm">本人已確認以上資料符合公司目前實際情形。</label>
+          <button id="submitBtn" class="primary" type="submit">送出確認資料</button>
+        </section>
+      </form>
+    </section>
+    <section id="successView" class="success hidden" aria-live="polite"><div class="success-panel"><p class="eyebrow">送出完成</p><h1>資料已成功送出</h1><p>感謝您完成求才資料確認。承辦人員將依您提供的內容製作正式求才通知，完成後會再提供專屬連結給您查看。</p></div></section>
+    <section id="pdfTemplate" class="pdf-sheet" aria-hidden="true"></section>
+  </main>
+</body>
+</html>
