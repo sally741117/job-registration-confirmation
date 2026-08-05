@@ -107,6 +107,30 @@ function workflowText(item) {
   return helpers.statusLabel(item.status);
 }
 
+function latestSubmissionForList(item) {
+  const submissions = Array.isArray(item.submissions)
+    ? item.submissions.filter((submission) => submission.caseId === item.caseId)
+    : [];
+  const linked = item.latestSubmissionId
+    ? submissions.find((submission) => submission.submissionId === item.latestSubmissionId)
+    : null;
+  if (linked) return linked;
+  if (![CASE_STATUS.submitted, CASE_STATUS.preparing_notice, CASE_STATUS.notice_ready].includes(item.status)) return null;
+  return submissions.find((submission) => submission.isLatest) || submissions[submissions.length - 1] || null;
+}
+
+function responseBadgeForList(item, latest) {
+  if (!latest) return "尚未回覆";
+  return item.hasUnreadResponse ? "新回覆" : "已查看";
+}
+
+function noticeStatusForList(item, latest) {
+  if (!latest) return "尚未回覆";
+  if (item.noticeViewed) return "公司已查看通知";
+  if (item.noticeFileUrl) return "通知已上傳";
+  return "已回覆，待上傳通知";
+}
+
 async function renderCaseList() {
   let cases = [];
   try {
@@ -124,7 +148,7 @@ async function renderCaseList() {
     return;
   }
   caseList.innerHTML = cases.map((item) => {
-    const latest = helpers.latestSubmission(item);
+    const latest = latestSubmissionForList(item);
     return `
       <article class="case-item admin-list-item">
         <div><small>公司名稱</small><strong>${item.companyName}</strong></div>
@@ -132,8 +156,8 @@ async function renderCaseList() {
         <div><small>工作地點</small><span>${item.workAddress || ""}</span></div>
         <div><small>建立時間</small><span>${helpers.displayDateTime(item.createdAt)}</span></div>
         <div><small>最新回覆時間</small><span>${helpers.displayDateTime(latest?.submittedAt) || "尚未回覆"}</span></div>
-        <div><small>回覆查看</small><span class="unread-badge ${item.hasUnreadResponse ? "new" : ""}">${helpers.responseBadge(item)}</span></div>
-        <div><small>正式通知狀態</small><span>${helpers.noticeStatusLabel(item)}</span></div>
+        <div><small>回覆查看</small><span class="unread-badge ${latest && item.hasUnreadResponse ? "new" : ""}">${responseBadgeForList(item, latest)}</span></div>
+        <div><small>正式通知狀態</small><span>${noticeStatusForList(item, latest)}</span></div>
         <div><small>目前狀態</small><span class="status ${item.status}">${helpers.statusLabel(item.status)}</span></div>
         <div class="action-row">
           <details class="more-actions">
