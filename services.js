@@ -411,7 +411,7 @@ const remoteClient = {
         contentType: response.headers.get("content-type") || "",
         preview: text.slice(0, 200)
       });
-      throw new Error("線上服務回傳格式錯誤，請稍後重試。");
+      throw new Error("線上服務暫時無法回應，請稍後再試。");
     }
     const authCode = result?.code || result?.error?.code || "";
     const isExplicitAuthFailure = ["UNAUTHORIZED", "SESSION_EXPIRED"].includes(authCode);
@@ -532,7 +532,11 @@ const caseService = {
     if (CONFIG.ACTIVE_STORAGE_MODE === "remote") {
       const record = this.normalizeCaseRecord(await remoteClient.request("createCase", input));
       if (!record.caseId || !record.formAccessToken) throw new Error("建立案件回傳資料不完整，缺少案件編號或填寫 token。");
-      return record;
+      return {
+        ...input,
+        ...record,
+        status: record.status || CASE_STATUS.pending
+      };
     }
     const now = new Date().toISOString();
     const cases = localStore.readCases();
