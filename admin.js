@@ -18,6 +18,7 @@ let createdCase = null;
 let createInProgress = false;
 let createRequestId = "";
 let highlightedCaseId = "";
+let caseListLoadSerial = 0;
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -77,6 +78,15 @@ function withTimeout(promise, timeoutMs, message) {
     timer = window.setTimeout(() => reject(new Error(message)), timeoutMs);
   });
   return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timer));
+}
+
+function delay(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function isRetryableListError(error) {
+  const message = messageOf(error);
+  return /逾時|Failed to fetch|NetworkError|Load failed|AbortError|暫時|新建立案件尚未出現在列表/.test(message);
 }
 
 function collectCaseInput(root = caseForm) {
@@ -177,7 +187,8 @@ function noticeStatusForList(item, latest) {
   return "已回覆，待上傳通知";
 }
 
-async function renderCaseList() {
+async function renderCaseList(options = {}) {
+  const loadSerial = ++caseListLoadSerial;
   let cases = [];
   caseList.innerHTML = `<p class="empty">案件資料載入中...</p>`;
   if (
@@ -192,11 +203,16 @@ async function renderCaseList() {
     const result = await caseService.listCases();
     if (!Array.isArray(result.cases)) throw new Error("案件列表回傳格式錯誤。");
     cases = result.cases.filter((item) => item.status !== CASE_STATUS.deleted && !item.deletedAt);
+    if (options.expectedCaseId && !cases.some((item) => item.caseId === options.expectedCaseId)) {
+      throw new Error("新建立案件尚未出現在列表，正在重新讀取。");
+    }
   } catch (error) {
+    if (loadSerial !== caseListLoadSerial) return false;
     console.error("案件列表更新失敗", error);
     renderListError(error);
     return false;
   }
+  if (loadSerial !== caseListLoadSerial) return false;
   lastUpdatedText.textContent = `最後更新：${helpers.displayDateTime(new Date().toISOString())}`;
   if (!cases.length) {
     caseList.innerHTML = `<p class="empty">目前尚未建立案件。</p>`;
@@ -237,6 +253,21 @@ async function renderCaseList() {
   return true;
 }
 
+async function renderCaseListWithRetry(options = {}) {
+  const delays = [0, 500, 1000, 2000];
+  let lastRetryableError = null;
+  for (let index = 0; index < delays.length; index += 1) {
+    if (delays[index]) await delay(delays[index]);
+    const updated = await renderCaseList(options);
+    if (updated) return true;
+    const currentText = caseList.textContent || "";
+    lastRetryableError = new Error(currentText || "案件列表更新失敗。");
+    if (!isRetryableListError(lastRetryableError)) return false;
+  }
+  if (lastRetryableError) renderListError(lastRetryableError);
+  return false;
+}
+
 caseForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (createInProgress) return;
@@ -258,7 +289,7 @@ caseForm.addEventListener("submit", async (event) => {
     setCreateBusy(false);
     let listUpdated = false;
     try {
-      listUpdated = await withTimeout(renderCaseList(), 35000, "案件列表更新逾時。");
+      listUpdated = await withTimeout(renderCaseListWithRetry({ expectedCaseId: highlightedCaseId }), 70000, "案件列表更新逾時。");
     } catch (listError) {
       console.error("案件已建立，但列表更新失敗", listError);
       renderListError(listError);

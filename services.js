@@ -604,6 +604,21 @@ const caseService = {
       noticeAccessToken: data.noticeAccessToken || data.noticeToken || ""
     };
   },
+  summarizeListResponse(result) {
+    if (Array.isArray(result)) return `array(length=${result.length})`;
+    if (!result || typeof result !== "object") return `${typeof result}:${String(result).slice(0, 120)}`;
+    const keys = Object.keys(result);
+    const dataKeys = result.data && typeof result.data === "object" ? Object.keys(result.data) : [];
+    const resultKeys = result.result && typeof result.result === "object" ? Object.keys(result.result) : [];
+    return JSON.stringify({
+      keys,
+      dataKeys,
+      resultKeys,
+      casesType: Array.isArray(result.cases) ? "array" : typeof result.cases,
+      dataCasesType: Array.isArray(result.data?.cases) ? "array" : typeof result.data?.cases,
+      resultCasesType: Array.isArray(result.result?.cases) ? "array" : typeof result.result?.cases
+    });
+  },
   normalizeCaseList(result) {
     const candidates = [
       result?.cases,
@@ -615,11 +630,12 @@ const caseService = {
     ];
     const data = candidates.find((value) => Array.isArray(value));
     if (!data) {
+      const summary = this.summarizeListResponse(result);
       console.error("listCases 回傳格式不是陣列", {
-        keys: result && typeof result === "object" ? Object.keys(result) : [],
-        valueType: typeof result
+        summary,
+        raw: result
       });
-      throw new Error("案件列表回傳格式錯誤。");
+      throw new Error(`案件列表回傳格式錯誤：${summary}`);
     }
     const cases = data
       .map((item) => {
