@@ -2,7 +2,8 @@
 
 const CONFIG = {
   STORAGE_MODE: "remote",
-  GOOGLE_APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbw5O0YNav0Ioec2fwTbnyGRp_CTincrdNaOV_OHpQSMJmhzZJkR_4AnCWFyV9sJlC2b/exec"
+  GOOGLE_APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbw5O0YNav0Ioec2fwTbnyGRp_CTincrdNaOV_OHpQSMJmhzZJkR_4AnCWFyV9sJlC2b/exec",
+  PUBLIC_APP_BASE_URL: "https://sally741117.github.io/job-registration-confirmation"
 };
 
 function isValidAppsScriptUrl(value) {
@@ -92,16 +93,32 @@ const helpers = {
   getCaseIdFromUrl() {
     return new URLSearchParams(window.location.search).get("caseId") || "";
   },
+  publicBaseUrl() {
+    return String(CONFIG.PUBLIC_APP_BASE_URL || window.location.origin + window.location.pathname.replace(/\/[^/]*$/, "")).replace(/\/$/, "");
+  },
+  isValidPublicValue(value) {
+    const text = String(value || "").trim();
+    return Boolean(text && text !== "undefined" && text !== "null");
+  },
   formUrl(caseRecordOrId) {
     const caseId = typeof caseRecordOrId === "object" ? caseRecordOrId.caseId : caseRecordOrId;
     const token = typeof caseRecordOrId === "object" ? caseRecordOrId.formAccessToken : "";
-    const url = new URL(`form.html?caseId=${encodeURIComponent(caseId)}`, window.location.href);
+    if (!this.isValidPublicValue(caseId) || (CONFIG.ACTIVE_STORAGE_MODE === "remote" && !this.isValidPublicValue(token))) {
+      throw new Error("公司填寫連結資料不完整，缺少有效案件編號或填寫 token。");
+    }
+    const url = new URL(`${this.publicBaseUrl()}/form.html`);
+    url.searchParams.set("caseId", caseId);
     if (token) url.searchParams.set("token", token);
     if (CONFIG.ACTIVE_STORAGE_MODE === "local") url.searchParams.set("storage", "local");
     return url.href;
   },
   noticeUrl(caseRecord) {
-    const url = new URL(`notice.html?caseId=${encodeURIComponent(caseRecord.caseId)}&token=${encodeURIComponent(caseRecord.noticeAccessToken || "")}`, window.location.href);
+    if (!this.isValidPublicValue(caseRecord.caseId) || !this.isValidPublicValue(caseRecord.noticeAccessToken)) {
+      throw new Error("通知查看連結資料不完整，缺少有效案件編號或通知 token。");
+    }
+    const url = new URL(`${this.publicBaseUrl()}/notice.html`);
+    url.searchParams.set("caseId", caseRecord.caseId);
+    url.searchParams.set("token", caseRecord.noticeAccessToken || "");
     if (CONFIG.ACTIVE_STORAGE_MODE === "local") url.searchParams.set("storage", "local");
     return url.href;
   },
@@ -166,16 +183,39 @@ const remoteClient = {
   adminSessionKey: "jobRegistrationAdminSession",
   getAdminSession() {
     try {
-      return JSON.parse(sessionStorage.getItem(this.adminSessionKey) || "null");
+      const raw = localStorage.getItem(this.adminSessionKey) || sessionStorage.getItem(this.adminSessionKey);
+      if (!raw) return null;
+      const session = JSON.parse(raw);
+      if (session?.adminSessionToken && !session.token) {
+        return {
+          token: session.adminSessionToken,
+          email: session.adminEmail || session.email || "",
+          expiresAt: session.expiresAt || ""
+        };
+      }
+      return session;
     } catch (error) {
       return null;
     }
   },
   setAdminSession(session) {
-    sessionStorage.setItem(this.adminSessionKey, JSON.stringify(session || {}));
+    const expiresAt = session.expiresAt || (session.expiresIn ? new Date(Date.now() + Number(session.expiresIn) * 1000).toISOString() : "");
+    const stored = {
+      token: session.token || session.adminSessionToken || "",
+      email: session.email || session.adminEmail || "",
+      expiresAt
+    };
+    localStorage.setItem(this.adminSessionKey, JSON.stringify(stored));
+    sessionStorage.removeItem(this.adminSessionKey);
   },
   clearAdminSession() {
     sessionStorage.removeItem(this.adminSessionKey);
+    localStorage.removeItem(this.adminSessionKey);
+  },
+  isSessionUsable(session) {
+    if (!session?.token) return false;
+    if (!session.expiresAt) return true;
+    return new Date(session.expiresAt).getTime() > Date.now() + 60000;
   },
   showAdminLoginDialog() {
     return new Promise((resolve, reject) => {
@@ -235,7 +275,7 @@ const remoteClient = {
   },
   async ensureAdminSession() {
     const existing = this.getAdminSession();
-    if (existing?.adminSessionToken) return existing.adminSessionToken;
+    if (this.isSessionUsable(existing)) return existing.token;
     const credentials = await this.showAdminLoginDialog();
     if (!credentials.email || !credentials.adminCode) throw new Error("尚未登入管理後台。");
     const result = await this.request("adminLogin", { email: credentials.email, adminCode: credentials.adminCode, skipAdminSession: true });
@@ -259,8 +299,8 @@ const remoteClient = {
     if (result?.ok === false && result.status === 401 && this.needsAdmin(action)) {
       this.clearAdminSession();
     }
-    if (!result?.ok) throw new Error(result?.error || "線上服務暫時無法使用。");
-    return result.result;
+    if (!result?.ok) throw new Error(result?.error?.message || result?.error || "線上服務暫時無法使用。");
+    return result.result ?? result.data ?? result;
   },
   async testConnection() {
     if (!CONFIG.GOOGLE_APPS_SCRIPT_URL || !String(CONFIG.GOOGLE_APPS_SCRIPT_URL).trim()) {
@@ -369,7 +409,11 @@ const noticeFileStore = {
 
 const caseService = {
   async createCase(input) {
-    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return remoteClient.request("createCase", input);
+    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") {
+      const record = this.normalizeCaseRecord(await remoteClient.request("createCase", input));
+      if (!record.caseId || !record.formAccessToken) throw new Error("建立案件回傳資料不完整，缺少案件編號或填寫 token。");
+      return record;
+    }
     const now = new Date().toISOString();
     const cases = localStore.readCases();
     const caseRecord = {
@@ -419,6 +463,15 @@ const caseService = {
     localStore.writeCases(cases);
     return caseRecord;
   },
+  normalizeCaseRecord(record = {}) {
+    const data = record.data || record.result || record;
+    return {
+      ...data,
+      caseId: data.caseId || data.id || "",
+      formAccessToken: data.formAccessToken || data.token || data.formToken || "",
+      noticeAccessToken: data.noticeAccessToken || data.noticeToken || ""
+    };
+  },
   generateCaseId(companyName, cases) {
     const prefix = String(companyName || "CASE").replace(/[^\w\u4e00-\u9fff]/g, "").slice(0, 4).toUpperCase() || "CASE";
     const date = helpers.todayStamp();
@@ -431,15 +484,15 @@ const caseService = {
     return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
   },
   async getCase(caseId) {
-    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return remoteClient.request("getCase", { caseId });
+    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.normalizeCaseRecord(await remoteClient.request("getCase", { caseId }));
     return localStore.readCases().find((item) => item.caseId === caseId) || null;
   },
   async getPublicFormCase(caseId, token) {
-    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return remoteClient.request("getPublicFormCase", { caseId, token });
+    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.normalizeCaseRecord(await remoteClient.request("getPublicFormCase", { caseId, token }));
     return this.getCase(caseId);
   },
   async listCases() {
-    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return remoteClient.request("listCases");
+    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return (await remoteClient.request("listCases")).map((item) => this.normalizeCaseRecord(item));
     return localStore.readCases().sort((a, b) => {
       const rank = (item) => {
         if (item.hasUnreadResponse) return 0;
@@ -453,7 +506,7 @@ const caseService = {
     });
   },
   async updateCase(updatedCase) {
-    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return remoteClient.request("updateCase", updatedCase);
+    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.normalizeCaseRecord(await remoteClient.request("updateCase", updatedCase));
     const cases = localStore.readCases();
     const index = cases.findIndex((item) => item.caseId === updatedCase.caseId);
     if (index === -1) throw new Error("案件不存在。");
@@ -462,7 +515,7 @@ const caseService = {
     return updatedCase;
   },
   async updateCaseDetails(caseId, input) {
-    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return remoteClient.request("updateCaseDetails", { caseId, input });
+    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.normalizeCaseRecord(await remoteClient.request("updateCaseDetails", { caseId, input }));
     const record = await this.getCase(caseId);
     if (!record) throw new Error("案件不存在。");
     return this.updateCase({
@@ -483,7 +536,7 @@ const caseService = {
     });
   },
   async reopenForRevision(caseId) {
-    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return remoteClient.request("reopenForRevision", { caseId });
+    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.normalizeCaseRecord(await remoteClient.request("reopenForRevision", { caseId }));
     const record = await this.getCase(caseId);
     if (!record) throw new Error("案件不存在。");
     const now = new Date().toISOString();
@@ -495,7 +548,7 @@ const caseService = {
     });
   },
   async markResponseViewed(caseId) {
-    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return remoteClient.request("markResponseViewed", { caseId });
+    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.normalizeCaseRecord(await remoteClient.request("markResponseViewed", { caseId }));
     const record = await this.getCase(caseId);
     if (!record) throw new Error("案件不存在。");
     if (!record.hasUnreadResponse) return record;
@@ -518,7 +571,7 @@ const caseService = {
   },
   async uploadNoticeFile(caseId, fileData, options = {}) {
     if (options.expectedCaseId && options.expectedCaseId !== caseId) throw new Error("目前案件已切換，請重新選擇檔案");
-    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return remoteClient.request("uploadNoticeFile", { caseId, fileData, options });
+    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.normalizeCaseRecord(await remoteClient.request("uploadNoticeFile", { caseId, fileData, options }));
     const record = await this.getCase(caseId);
     if (!record) throw new Error("案件不存在。");
     if (options.expectedCaseId && record.caseId !== options.expectedCaseId) throw new Error("目前案件已切換，請重新選擇檔案");
@@ -612,13 +665,13 @@ const caseService = {
     });
   },
   async validateNoticeAccess(caseId, token) {
-    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return remoteClient.request("getPublicNotice", { caseId, token });
+    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.normalizeCaseRecord(await remoteClient.request("getPublicNotice", { caseId, token }));
     const record = await this.getCase(caseId);
     if (!record || record.noticeAccessToken !== token || record.status !== CASE_STATUS.notice_ready || (!record.noticeFileUrl && !record.noticeFileKey)) return null;
     return noticeFileStore.attachObjectUrl(record);
   },
   async recordNoticeView(caseId, token) {
-    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return remoteClient.request("recordNoticeView", { caseId, token });
+    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.normalizeCaseRecord(await remoteClient.request("recordNoticeView", { caseId, token }));
     const record = await this.getCase(caseId);
     if (!record || record.noticeAccessToken !== token || record.status !== CASE_STATUS.notice_ready || (!record.noticeFileUrl && !record.noticeFileKey)) return null;
     const now = new Date().toISOString();
@@ -694,7 +747,7 @@ const submissionService = {
       viewCount: oldNotice ? 0 : caseRecord.viewCount
     };
     if (CONFIG.ACTIVE_STORAGE_MODE === "remote") {
-      const saved = await remoteClient.request("submitResponse", { caseId: caseRecord.caseId, formAccessToken: caseRecord.formAccessToken, response, wasRevision, submissionId });
+      const saved = caseService.normalizeCaseRecord(await remoteClient.request("submitResponse", { caseId: caseRecord.caseId, formAccessToken: caseRecord.formAccessToken, response, wasRevision, submissionId }));
       return this.mergeCaseAndResponse(saved);
     }
     if (shouldBindUnboundNotice && caseRecord.noticeFileKey) {
