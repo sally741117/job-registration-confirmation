@@ -681,7 +681,7 @@ const caseService = {
     return this.getCase(caseId);
   },
   async listCases() {
-    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.normalizeCaseList(await remoteClient.request("listCases"));
+    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.normalizeCaseList(await remoteClient.request("listCases", {}, { timeoutMs: 25000 }));
     const cases = localStore.readCases().filter((item) => item.status !== CASE_STATUS.deleted && !item.deletedAt).sort((a, b) => {
       const rank = (item) => {
         if (item.hasUnreadResponse) return 0;

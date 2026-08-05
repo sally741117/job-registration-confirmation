@@ -289,7 +289,7 @@ caseForm.addEventListener("submit", async (event) => {
     setCreateBusy(false);
     let listUpdated = false;
     try {
-      listUpdated = await withTimeout(renderCaseListWithRetry({ expectedCaseId: highlightedCaseId }), 70000, "案件列表更新逾時。");
+      listUpdated = await renderCaseListWithRetry({ expectedCaseId: highlightedCaseId });
     } catch (listError) {
       console.error("案件已建立，但列表更新失敗", listError);
       renderListError(listError);
