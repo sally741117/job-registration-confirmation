@@ -414,8 +414,11 @@ const remoteClient = {
       throw new Error("線上服務暫時無法回應，請稍後再試。");
     }
     const authCode = result?.code || result?.error?.code || "";
-    const isExplicitAuthFailure = ["UNAUTHORIZED", "SESSION_EXPIRED"].includes(authCode);
-    if ((!response.ok || result?.ok === false) && result.status === 401 && isExplicitAuthFailure && this.needsAdmin(action) && !options.skipAuthRetry) {
+    const authMessage = String(result?.error?.message || result?.error || result?.message || "");
+    const isExplicitAuthFailure = ["UNAUTHORIZED", "SESSION_EXPIRED"].includes(authCode)
+      || result.status === 401
+      || /登入|逾時|授權|UNAUTHORIZED|SESSION_EXPIRED/i.test(authMessage);
+    if ((!response.ok || result?.ok === false) && isExplicitAuthFailure && this.needsAdmin(action) && !options.skipAuthRetry) {
       this.clearAdminSession();
       if (!options.retried) return this.request(action, payload, { retried: true });
     }

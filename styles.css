@@ -64,6 +64,17 @@ h2 { margin: 0; font-size: 22px; letter-spacing: 0; }
 h3 { margin: 0; font-size: 18px; }
 .hint, .submit-note { color: var(--muted); font-size: 14px; }
 
+.form-status {
+  min-height: 20px;
+  margin-top: 10px;
+  font-weight: 700;
+}
+
+.form-status--loading { color: var(--brand-dark); }
+.form-status--success { color: #15803d; }
+.form-status--warning { color: #b45309; }
+.form-status--error { color: var(--danger); }
+
 .case-info {
   display: grid;
   gap: 8px;
@@ -446,6 +457,11 @@ a.secondary {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fbfcfd;
+}
+
+.case-item.newly-created {
+  border-color: #15803d;
+  box-shadow: 0 0 0 2px rgba(21, 128, 61, .12);
 }
 
 .case-item div {
