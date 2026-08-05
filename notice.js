@@ -33,9 +33,6 @@ function assertNoticeData(result) {
   if (!result?.caseData?.companyName || !result?.caseData?.workAddress) {
     throw new Error("案件資料載入不完整，請聯絡承辦人員。");
   }
-  if (!result?.noticeFile?.previewUrl || !result?.noticeFile?.downloadUrl) {
-    throw new Error("求才內容預覽載入失敗。");
-  }
 }
 
 function renderCaseInfo(caseData) {
@@ -47,6 +44,13 @@ function renderCaseInfo(caseData) {
 }
 
 function renderNoticeFile(noticeFile) {
+  if (!noticeFile?.previewUrl || !noticeFile?.downloadUrl) {
+    noticeFileView.innerHTML = `<p class="hint">正在載入求才內容預覽，請稍候……</p>`;
+    downloadOriginalBtn.removeAttribute("href");
+    downloadOriginalBtn.removeAttribute("download");
+    downloadOriginalBtn.classList.add("disabled");
+    return;
+  }
   const isPdf = noticeFile.fileType === "application/pdf";
   if (isPdf) {
     noticeFileView.innerHTML = `
@@ -67,6 +71,7 @@ function renderNoticeFile(noticeFile) {
   }
   downloadOriginalBtn.href = noticeFile.downloadUrl;
   downloadOriginalBtn.download = noticeFile.fileName || "求才內容";
+  downloadOriginalBtn.classList.remove("disabled");
 }
 
 function validatePdfData(data) {
@@ -116,6 +121,13 @@ async function boot() {
     setVisible(loadingView, false);
     setVisible(invalidView, false);
     setVisible(noticeView, true);
+    noticeService.getNoticeFile(caseId, token).then((noticeFile) => {
+      currentNotice.noticeFile = { ...currentNotice.noticeFile, ...noticeFile };
+      renderNoticeFile(currentNotice.noticeFile);
+    }).catch((error) => {
+      console.error("求才內容檔案載入失敗", error);
+      noticeFileView.innerHTML = `<p class="empty">求才內容預覽載入失敗。</p>`;
+    });
     noticeService.recordNoticeView(caseId, token).catch((error) => {
       console.warn("通知查看紀錄寫入失敗", error);
     });

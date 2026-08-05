@@ -954,6 +954,20 @@ const noticeService = {
     }
     return this.normalize(await caseService.validateNoticeAccess(caseId, token));
   },
+  async getNoticeFile(caseId, token) {
+    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") {
+      const data = await remoteClient.request("getNoticeFile", { caseId, token }, { timeoutMs: 120000 });
+      const file = data?.noticeFile || data?.data?.noticeFile || data?.result?.noticeFile || data;
+      return {
+        fileName: file.fileName || "",
+        fileType: file.fileType || "",
+        fileSize: Number(file.fileSize || 0),
+        previewUrl: file.previewUrl || file.fileUrl || "",
+        downloadUrl: file.downloadUrl || file.fileUrl || ""
+      };
+    }
+    return this.normalize(await caseService.validateNoticeAccess(caseId, token)).noticeFile;
+  },
   async recordNoticeView(caseId, token) {
     if (CONFIG.ACTIVE_STORAGE_MODE === "remote") {
       return this.normalize(await remoteClient.request("recordNoticeView", { caseId, token }));
