@@ -643,6 +643,10 @@ a.secondary {
   z-index: -1;
   transform: translateX(-120%);
   box-shadow: none;
+  letter-spacing: 0;
+  word-spacing: 0;
+  font-kerning: normal;
+  text-align: left;
 }
 
 .pdf-sheet.pdf-rendering {
@@ -656,19 +660,32 @@ a.secondary {
   border-bottom: 2px solid #111;
   padding-bottom: 8px;
   margin-bottom: 12px;
+  letter-spacing: 0;
+  word-spacing: 0;
 }
 
 .pdf-sheet h2 {
   font-size: 17px;
-  margin: 12px 0 6px;
-  border-left: 4px solid #111;
-  padding-left: 8px;
+  margin: 10px 0 5px;
+  border-left: 0;
+  padding-left: 0;
+  letter-spacing: 0;
+  word-spacing: 0;
 }
 
 .pdf-sheet p, .pdf-sheet li {
   font-size: 14px;
-  line-height: 1.48;
-  margin-bottom: 7px;
+  line-height: 1.45;
+  margin: 0 0 5px;
+  padding-left: 0;
+  text-align: left;
+  text-indent: 0;
+  letter-spacing: 0;
+  word-spacing: 0;
+  font-kerning: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+  white-space: normal;
 }
 
 .pdf-sheet .notice-meta {
@@ -679,18 +696,28 @@ a.secondary {
   border: 1px solid #555;
   padding: 8px 10px;
   align-items: center;
+  letter-spacing: 0;
+  word-spacing: 0;
 }
 
 .pdf-sheet .notice-meta p {
   margin: 0;
   min-width: 0;
   letter-spacing: 0;
+  word-spacing: 0;
+  font-kerning: normal;
   overflow-wrap: anywhere;
 }
 
 .pdf-sheet .qa-list {
-  margin: 0 0 10px 20px;
+  margin: 0 0 8px;
   padding: 0;
+  list-style-position: outside;
+}
+
+.pdf-sheet .qa-list li {
+  margin: 0 0 3px 18px;
+  padding-left: 0;
 }
 
 .pdf-sheet table {
@@ -716,11 +743,14 @@ a.secondary {
 
 .pdf-sheet .signoff {
   text-align: right;
-  margin-top: 16px;
-  font-size: 16px;
+  margin-top: 10px;
+  font-size: 15px;
   font-weight: 700;
-  padding-right: 10px;
-  padding-bottom: 6px;
+  padding-right: 8px;
+  padding-bottom: 10px;
+  letter-spacing: 0;
+  word-spacing: 0;
+  font-kerning: normal;
 }
 
 @media (max-width: 720px) {

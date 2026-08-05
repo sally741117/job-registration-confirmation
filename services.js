@@ -897,7 +897,7 @@ const pdfService = {
     if (data.leaveType === "輪休" && data.workDays && data.restDays) return `休假方式是做${data.workDays}日休${data.restDays}日嗎：是。`;
     if (data.leaveType === "排休" && data.monthlyLeaveDays) return `休假方式是排休，每月休假${data.monthlyLeaveDays}日嗎：是。`;
     if (data.leaveOther) return `休假方式是${data.leaveOther}嗎：是。`;
-    return "休假方式是＿＿＿＿嗎：是。";
+    return "";
   },
   workTimeQuestions(data) {
     const rows = [];
@@ -905,8 +905,8 @@ const pdfService = {
     if (completeShifts.length) {
       completeShifts.slice(0, 3).forEach((shift) => rows.push(`${shift.name}工作時間：${helpers.displayTime(shift.start)}～${helpers.displayTime(shift.end)}嗎：是。`));
       if (data.rotationMethod) rows.push(`輪班方式是${data.rotationMethod}嗎：是。`);
-    } else {
-      rows.push(`工作時間：${data.standardTime?.label || "08：00～17：00"}嗎：是。`);
+    } else if (data.standardTime?.label || (data.standardTime?.start && data.standardTime?.end)) {
+      rows.push(`工作時間：${data.standardTime?.label || `${helpers.displayTime(data.standardTime.start)}～${helpers.displayTime(data.standardTime.end)}`}嗎：是。`);
     }
     (data.partTimes || []).filter((time) => time.start && time.end).forEach((time, index) => {
       rows.push(`部分工時第${index + 1}時段：${helpers.displayTime(time.start)}～${helpers.displayTime(time.end)}嗎：是。`);
@@ -925,8 +925,9 @@ const pdfService = {
       `求才工作地點在哪：${data.workAddress || "＿＿＿＿"}。`,
       `（貴司員工的工作地址，請與承辦人員核對；若承辦人員說明正確，請回答「是」。）`
     ];
-    rows.push(helpers.hasRecruitmentCount(data) ? `本次求才人數是${data.recruitmentCount}人嗎：是。` : "本次求才人數是＿＿人嗎：是。");
-    rows.push(this.leaveQuestion(data));
+    if (helpers.hasRecruitmentCount(data)) rows.push(`本次求才人數是${data.recruitmentCount}人嗎：是。`);
+    const leaveQuestion = this.leaveQuestion(data);
+    if (leaveQuestion) rows.push(leaveQuestion);
     rows.push(...this.workTimeQuestions(data));
     rows.push(data.publicPhone ? `公開求才電話為${data.publicPhone}，這支電話會公布在台灣就業通網站，若有人來求才請不要拒絕：好。` : "這支電話會公布在台灣就業通網站，若有人來求才請不要拒絕：好。");
     return rows;
@@ -1026,7 +1027,7 @@ const pdfService = {
       ], gap: 10 },
       { text: "為辦理申請外籍移工程序，本公司將會安排人員至「就業中心」求才登記，屆時會有就業中心承辦人員和您確認是否有委託仲介公司辦理求才登記及確認求才條件，故要麻煩您依照我們發給您的求才內容作核對，請幫我們回答承辦人員問題即可。", size: 11 },
       { text: "以下求才條件皆為制式，若有需異動或其他問題，再麻煩您告知您的業務做變更，謝謝。", size: 11, gap: 7 },
-      { text: "就業中心 Q&A：", size: 13, bold: true, gap: 4 },
+      { text: "就業中心 Q&A", size: 13, bold: true, gap: 4 },
       ...this.qAndA(data).map((item) => ({ text: `• ${item}`, size: 10.5, bullet: true })),
       { text: "以上問答是大部分就業服務站會詢問的重點，其餘未特別提供的問題，若內容正確，回答「是」即可。", size: 11, gap: 8 },
       { text: "由於求才相關規定，若有就業服務站推薦求職者前往面試，切勿以年齡、性別、學歷、經歷等理由拒絕。", size: 11 },
@@ -1062,6 +1063,15 @@ const pdfService = {
       }
     });
     if (line) rows.push(line);
+    const last = rows[rows.length - 1] || "";
+    if (rows.length > 1 && Array.from(last).length <= 2) {
+      const previous = rows[rows.length - 2];
+      const previousChars = Array.from(previous);
+      if (previousChars.length > 8) {
+        rows[rows.length - 2] = previousChars.slice(0, -2).join("");
+        rows[rows.length - 1] = `${previousChars.slice(-2).join("")}${last}`;
+      }
+    }
     return rows.length ? rows : [""];
   },
   utf16Hex(text) {
@@ -1074,15 +1084,21 @@ const pdfService = {
     return String(text || "").replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
   },
   estimateTextWidth(text, size) {
-    return Array.from(String(text || "")).reduce((total, char) => total + (char.charCodeAt(0) > 255 ? size * 0.92 : size * 0.52), 0);
+    return Array.from(String(text || "")).reduce((total, char) => {
+      if (char === " " || char === "　") return total + size * 0.24;
+      if (/[0-9A-Za-z/:~.,()\-]/.test(char)) return total + size * 0.5;
+      if (/[：～「」『』]/.test(char)) return total + size * 0.48;
+      if (/[，。：；、（）]/.test(char)) return total + size * 0.65;
+      return total + size;
+    }, 0);
   },
   textRuns(text) {
     const runs = [];
     let current = "";
     let currentType = "";
     Array.from(String(text || "")).forEach((char) => {
-      const type = char.charCodeAt(0) <= 127 || char === "～" ? "latin" : "cjk";
-      const runChar = char === "～" ? "~" : char;
+      const type = char.charCodeAt(0) <= 127 ? "latin" : "cjk";
+      const runChar = char;
       if (current && type !== currentType) {
         runs.push({ type: currentType, text: current });
         current = "";
@@ -1104,15 +1120,14 @@ const pdfService = {
         return command;
       }).join("\n");
     };
-    if (!options.bold) return drawAt(0);
-    return `${drawAt(0)}\n${drawAt(0.25)}`;
+    return drawAt(0);
   },
   createTextPdfBlob(items) {
     const pageWidth = 595;
     const pageHeight = 842;
-    const marginX = 48;
+    const marginX = 52;
     const startY = 792;
-    const bottomY = 44;
+    const bottomY = 50;
     const metaColumnGap = 20;
     const metaColumnWidth = (pageWidth - (marginX * 2) - metaColumnGap) / 2;
     const prepareMetaRows = (item) => {
@@ -1147,9 +1162,10 @@ const pdfService = {
         y -= totalHeight + (item.gap || 8);
         return;
       }
-      const lines = item.noWrap ? [item.text] : this.wrapText(item.text, item.bullet ? 48 : item.size >= 13 ? 34 : 45);
+      const maxWidth = pageWidth - (marginX * 2) - (item.bullet ? 12 : 0);
+      const lines = item.noWrap ? [item.text] : this.wrapTextByWidth(item.text, item.size, maxWidth);
       lines.forEach((line, index) => {
-        const lineHeight = item.size + 3;
+        const lineHeight = item.size + (item.bullet ? 2.5 : 3.8);
         if (y - lineHeight < bottomY) {
           pages.push([]);
           y = startY;
@@ -1192,7 +1208,8 @@ const pdfService = {
             }).join("\n");
           }
           const textWidth = this.estimateTextWidth(line.text, line.size);
-          const x = line.align === "center" ? pageWidth / 2 - textWidth / 2 : line.align === "right" ? pageWidth - marginX - 28 - textWidth : marginX + (line.continued ? 14 : 0);
+          const rightSafeInset = 12;
+          const x = line.align === "center" ? pageWidth / 2 - textWidth / 2 : line.align === "right" ? pageWidth - marginX - rightSafeInset - textWidth : marginX + (line.continued ? (line.bullet ? 12 : 0) : 0);
           return this.drawPdfText(line.text, Math.max(marginX, x), line.y, line.size, { bold: line.bold });
         })
       ].join("\n");
