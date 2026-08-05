@@ -363,7 +363,7 @@ caseList.addEventListener("click", async (event) => {
   }
 });
 
-refreshListBtn.addEventListener("click", renderCaseList);
+refreshListBtn.addEventListener("click", () => renderCaseListWithRetry({ force: true }));
 testConnectionBtn.addEventListener("click", async () => {
   testConnectionBtn.disabled = true;
   connectionResult.textContent = "正在測試連線...";
@@ -398,7 +398,7 @@ if (!requestedCaseId) {
   }
 
   try {
-    renderCaseList();
+    renderCaseListWithRetry();
   } catch (error) {
     console.error("案件列表初始化失敗", error);
     renderListError(error);
