@@ -113,7 +113,7 @@ async function renderCaseList() {
     cases = await caseService.listCases();
   } catch (error) {
     console.error("案件列表更新失敗", error);
-    caseList.innerHTML = `<p class="empty">案件列表更新失敗，請確認 Google Apps Script URL 是否已設定。</p>`;
+    caseList.innerHTML = `<p class="empty">案件列表更新失敗：${error.message || "線上服務暫時無法使用，請稍後再試。"}</p>`;
     return;
   }
   lastUpdatedText.textContent = `最後更新：${helpers.displayDateTime(new Date().toISOString())}`;

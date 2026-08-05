@@ -181,7 +181,7 @@ const helpers = {
 
 const remoteClient = {
   adminSessionKey: "jobRegistrationAdminSession",
-  requestTimeoutMs: 25000,
+  requestTimeoutMs: 60000,
   adminAuthPromise: null,
   loginModalOpen: false,
   lastAuthFailureAt: 0,
