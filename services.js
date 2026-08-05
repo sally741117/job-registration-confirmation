@@ -181,6 +181,9 @@ const helpers = {
 
 const remoteClient = {
   adminSessionKey: "jobRegistrationAdminSession",
+  requestTimeoutMs: 25000,
+  adminAuthPromise: null,
+  loginModalOpen: false,
   getAdminSession() {
     try {
       const raw = localStorage.getItem(this.adminSessionKey) || sessionStorage.getItem(this.adminSessionKey);
@@ -219,6 +222,11 @@ const remoteClient = {
   },
   showAdminLoginDialog() {
     return new Promise((resolve, reject) => {
+      if (this.loginModalOpen) {
+        reject(new Error("管理員登入視窗已開啟。"));
+        return;
+      }
+      this.loginModalOpen = true;
       const existing = document.querySelector("#adminLoginDialog");
       if (existing) existing.remove();
       const overlay = document.createElement("div");
@@ -237,7 +245,10 @@ const remoteClient = {
         </form>
       `;
       const form = overlay.querySelector("form");
-      const cleanup = () => overlay.remove();
+      const cleanup = () => {
+        this.loginModalOpen = false;
+        overlay.remove();
+      };
       overlay.querySelector("[data-cancel]").addEventListener("click", () => {
         cleanup();
         reject(new Error("尚未登入管理後台。"));
@@ -276,43 +287,73 @@ const remoteClient = {
   async ensureAdminSession() {
     const existing = this.getAdminSession();
     if (this.isSessionUsable(existing)) return existing.token;
+    if (this.adminAuthPromise) return this.adminAuthPromise;
+    this.adminAuthPromise = this.loginAndStoreSession()
+      .finally(() => {
+        this.adminAuthPromise = null;
+      });
+    return this.adminAuthPromise;
+  },
+  async loginAndStoreSession() {
     const credentials = await this.showAdminLoginDialog();
     if (!credentials.email || !credentials.adminCode) throw new Error("尚未登入管理後台。");
-    const result = await this.request("adminLogin", { email: credentials.email, adminCode: credentials.adminCode, skipAdminSession: true });
-    if (!result?.adminSessionToken) throw new Error("管理員登入失敗。");
-    this.setAdminSession(result);
-    return result.adminSessionToken;
+    const result = await this.request("adminLogin", { email: credentials.email, adminCode: credentials.adminCode, skipAdminSession: true }, { skipAuthRetry: true });
+    const normalized = this.normalizeAdminLogin(result);
+    if (!normalized.token) throw new Error("管理員登入失敗。");
+    this.setAdminSession(normalized);
+    return normalized.token;
+  },
+  normalizeAdminLogin(result = {}) {
+    return {
+      token: result.token || result.sessionToken || result.adminSessionToken || "",
+      email: result.email || result.adminEmail || result.admin?.email || "",
+      expiresAt: result.expiresAt || result.admin?.expiresAt || "",
+      expiresIn: result.expiresIn || ""
+    };
+  },
+  normalizeSessionCheck(result = {}) {
+    return {
+      authenticated: result.authenticated !== false,
+      email: result.email || result.adminEmail || result.admin?.email || "",
+      expiresAt: result.expiresAt || result.admin?.expiresAt || "",
+      raw: result
+    };
   },
   async request(action, payload = {}, options = {}) {
     if (!CONFIG.GOOGLE_APPS_SCRIPT_URL) throw new Error("尚未設定 Google Apps Script URL。");
-    const envelope = { action, payload };
+    const requestPayload = { ...payload };
+    const envelope = { action, payload: requestPayload };
     if (this.needsAdmin(action) && !payload.skipAdminSession) {
       envelope.adminSessionToken = await this.ensureAdminSession();
     }
-    delete payload.skipAdminSession;
-    const response = await fetch(CONFIG.GOOGLE_APPS_SCRIPT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(envelope)
-    });
+    if (options.adminSessionToken) envelope.adminSessionToken = options.adminSessionToken;
+    delete requestPayload.skipAdminSession;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), options.timeoutMs || this.requestTimeoutMs);
+    let response;
+    try {
+      response = await fetch(CONFIG.GOOGLE_APPS_SCRIPT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(envelope),
+        signal: controller.signal
+      });
+    } catch (error) {
+      if (error.name === "AbortError") throw new Error("線上服務回應逾時，請稍後重試。");
+      throw error;
+    } finally {
+      window.clearTimeout(timer);
+    }
     const text = await response.text();
     let result = null;
     try {
       result = JSON.parse(text);
     } catch (error) {
-      if (this.needsAdmin(action) && !options.retried) {
-        this.clearAdminSession();
-        return this.request(action, payload, { retried: true });
-      }
       throw new Error("線上服務回傳格式錯誤，請重新登入後再試。");
     }
-    if ((!response.ok || result?.ok === false) && result.status === 401 && this.needsAdmin(action)) {
+    if ((!response.ok || result?.ok === false) && result.status === 401 && this.needsAdmin(action) && !options.skipAuthRetry) {
       this.clearAdminSession();
       if (!options.retried) return this.request(action, payload, { retried: true });
-    }
-    if (!response.ok && this.needsAdmin(action) && !options.retried) {
-      this.clearAdminSession();
-      return this.request(action, payload, { retried: true });
     }
     if (!result?.ok) throw new Error(result?.error?.message || result?.error || "線上服務暫時無法使用。");
     return result.result ?? result.data ?? result;

@@ -250,6 +250,25 @@ function syncVisibility() {
   updateSummary();
 }
 
+function renderVisibleErrorState(message = "目前無法載入案件資料，請稍後重試或聯絡承辦人員。") {
+  if (missingTitle) missingTitle.textContent = "案件資料載入失敗";
+  if (missingText) {
+    missingText.innerHTML = "";
+    const text = document.createElement("span");
+    text.textContent = message;
+    const reload = document.createElement("button");
+    reload.type = "button";
+    reload.className = "primary inline-action";
+    reload.textContent = "重新載入";
+    reload.addEventListener("click", () => window.location.reload());
+    missingText.append(text, document.createElement("br"), reload);
+  }
+  setVisible(formView, false);
+  setVisible(completedView, false);
+  setVisible(successView, false);
+  setVisible(missingView, true);
+}
+
 form.addEventListener("input", syncVisibility);
 form.addEventListener("change", syncVisibility);
 $("#addPartTime").addEventListener("click", () => {
@@ -312,4 +331,7 @@ async function boot() {
   syncVisibility();
 }
 
-boot();
+boot().catch((error) => {
+  console.error("Form initialization failed:", error);
+  renderVisibleErrorState();
+});
