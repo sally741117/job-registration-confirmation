@@ -16,6 +16,7 @@ const createCaseButton = caseForm?.querySelector('button[type="submit"]');
 
 let createdCase = null;
 let createInProgress = false;
+let createRequestId = "";
 let highlightedCaseId = "";
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -53,6 +54,11 @@ function setCreateBusy(isBusy) {
   if (!createCaseButton) return;
   createCaseButton.disabled = isBusy;
   createCaseButton.textContent = isBusy ? "建立中..." : "建立案件並產生連結";
+}
+
+function generateRequestId() {
+  if (crypto?.randomUUID) return crypto.randomUUID();
+  return `REQ-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function renderListError(error) {
@@ -173,7 +179,7 @@ function noticeStatusForList(item, latest) {
 
 async function renderCaseList() {
   let cases = [];
-  caseList.innerHTML = `<p class="empty">案件列表載入中...</p>`;
+  caseList.innerHTML = `<p class="empty">案件資料載入中...</p>`;
   if (
     CONFIG.ACTIVE_STORAGE_MODE === "remote"
     && typeof remoteClient !== "undefined"
@@ -236,17 +242,19 @@ caseForm.addEventListener("submit", async (event) => {
   if (createInProgress) return;
   const input = collectCaseInput();
   if (!validate(input)) return;
+  if (!createRequestId) createRequestId = generateRequestId();
   setCreateBusy(true);
-  setFormStatus("建立中...請稍候，系統正在產生公司填寫連結。", "loading");
+  setFormStatus("正在建立案件，請稍候。", "loading");
   try {
     createdCase = await withTimeout(
-      caseService.createCase(input),
+      caseService.createCase({ ...input, requestId: createRequestId }),
       70000,
       "線上服務回應逾時，請重新整理案件列表確認是否已建立。"
     );
     highlightedCaseId = createdCase.caseId || "";
     renderCreated(createdCase);
-    setFormStatus("案件建立成功，已產生公司填寫連結。", "success");
+    setFormStatus("案件建立成功。", "success");
+    createRequestId = "";
     setCreateBusy(false);
     let listUpdated = false;
     try {
@@ -256,7 +264,7 @@ caseForm.addEventListener("submit", async (event) => {
       renderListError(listError);
     }
     if (!listUpdated) {
-      setFormStatus("案件已建立，但列表更新失敗。請使用上方填寫連結，或按案件列表的重新載入。", "warning");
+      setFormStatus("案件已建立成功，但案件列表更新失敗，請按重新載入。", "warning");
     }
   } catch (error) {
     console.error("建立案件失敗", error);
