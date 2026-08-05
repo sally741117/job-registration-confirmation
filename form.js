@@ -267,7 +267,7 @@ form.addEventListener("submit", async (event) => {
   submitBtn.textContent = "送出中，請稍候...";
   try {
     mergedSubmission = await submissionService.submitResponse(currentCase, response);
-    currentCase = await caseService.getCase(currentCase.caseId);
+    currentCase = mergedSubmission;
     setVisible(formView, false);
     setVisible(successView, true);
   } catch (error) {
@@ -278,14 +278,19 @@ form.addEventListener("submit", async (event) => {
   }
 });
 async function boot() {
+  const search = new URLSearchParams(window.location.search);
   const caseId = helpers.getCaseIdFromUrl();
-  if (!caseId) {
+  const token = search.get("token") || "";
+  if (!caseId || (CONFIG.ACTIVE_STORAGE_MODE === "remote" && !token)) {
     missingTitle.textContent = "缺少案件編號";
     missingText.textContent = "請確認填寫連結是否完整，網址需包含 caseId。";
     setVisible(missingView, true);
     return;
   }
-  currentCase = await caseService.getCase(caseId);
+  currentCase = CONFIG.ACTIVE_STORAGE_MODE === "remote"
+    ? await caseService.getPublicFormCase(caseId, token)
+    : await caseService.getCase(caseId);
+  if (CONFIG.ACTIVE_STORAGE_MODE === "remote" && currentCase) currentCase.formAccessToken = token;
   if (!currentCase) {
     missingTitle.textContent = "案件不存在";
     missingText.textContent = "查無此案件，請聯絡承辦仲介人員確認連結。";

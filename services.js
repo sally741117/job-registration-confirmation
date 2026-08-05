@@ -1,8 +1,8 @@
 ﻿const URL_PARAMS = typeof window === "undefined" ? new URLSearchParams("") : new URLSearchParams(window.location.search);
 
 const CONFIG = {
-  STORAGE_MODE: "auto",
-  GOOGLE_APPS_SCRIPT_URL: ""
+  STORAGE_MODE: "remote",
+  GOOGLE_APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbw5O0YNav0Ioec2fwTbnyGRp_CTincrdNaOV_OHpQSMJmhzZJkR_4AnCWFyV9sJlC2b/exec"
 };
 
 function isValidAppsScriptUrl(value) {
@@ -92,8 +92,11 @@ const helpers = {
   getCaseIdFromUrl() {
     return new URLSearchParams(window.location.search).get("caseId") || "";
   },
-  formUrl(caseId) {
+  formUrl(caseRecordOrId) {
+    const caseId = typeof caseRecordOrId === "object" ? caseRecordOrId.caseId : caseRecordOrId;
+    const token = typeof caseRecordOrId === "object" ? caseRecordOrId.formAccessToken : "";
     const url = new URL(`form.html?caseId=${encodeURIComponent(caseId)}`, window.location.href);
+    if (token) url.searchParams.set("token", token);
     if (CONFIG.ACTIVE_STORAGE_MODE === "local") url.searchParams.set("storage", "local");
     return url.href;
   },
@@ -160,14 +163,68 @@ const helpers = {
 };
 
 const remoteClient = {
+  adminSessionKey: "jobRegistrationAdminSession",
+  getAdminSession() {
+    try {
+      return JSON.parse(sessionStorage.getItem(this.adminSessionKey) || "null");
+    } catch (error) {
+      return null;
+    }
+  },
+  setAdminSession(session) {
+    sessionStorage.setItem(this.adminSessionKey, JSON.stringify(session || {}));
+  },
+  clearAdminSession() {
+    sessionStorage.removeItem(this.adminSessionKey);
+  },
+  needsAdmin(action) {
+    return [
+      "createCase",
+      "listCases",
+      "getCase",
+      "updateCase",
+      "updateCaseDetails",
+      "deleteCase",
+      "reopenRevision",
+      "reopenForRevision",
+      "markResponseViewed",
+      "savePdfInfo",
+      "uploadNoticeFile",
+      "deleteNoticeFile",
+      "getNoticeFileAdmin",
+      "driveHealthCheck"
+    ].includes(action);
+  },
+  async ensureAdminSession() {
+    const existing = this.getAdminSession();
+    if (existing?.adminSessionToken) return existing.adminSessionToken;
+    const email = window.prompt("請輸入管理員 Email");
+    if (!email) throw new Error("尚未登入管理後台。");
+    const adminCode = window.prompt("請輸入管理員驗證碼");
+    if (!adminCode) throw new Error("尚未登入管理後台。");
+    const result = await this.request("adminLogin", { email: email.trim(), adminCode: adminCode.trim(), skipAdminSession: true });
+    if (!result?.adminSessionToken) throw new Error("管理員登入失敗。");
+    this.setAdminSession(result);
+    return result.adminSessionToken;
+  },
   async request(action, payload = {}) {
     if (!CONFIG.GOOGLE_APPS_SCRIPT_URL) throw new Error("尚未設定 Google Apps Script URL。");
+    const envelope = { action, payload };
+    if (this.needsAdmin(action) && !payload.skipAdminSession) {
+      envelope.adminSessionToken = await this.ensureAdminSession();
+    }
+    delete payload.skipAdminSession;
     const response = await fetch(CONFIG.GOOGLE_APPS_SCRIPT_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ action, payload })
+      body: JSON.stringify(envelope)
     });
-    return response.json();
+    const result = await response.json();
+    if (result?.ok === false && result.status === 401 && this.needsAdmin(action)) {
+      this.clearAdminSession();
+    }
+    if (!result?.ok) throw new Error(result?.error || "線上服務暫時無法使用。");
+    return result.result;
   },
   async testConnection() {
     if (!CONFIG.GOOGLE_APPS_SCRIPT_URL || !String(CONFIG.GOOGLE_APPS_SCRIPT_URL).trim()) {
@@ -179,8 +236,8 @@ const remoteClient = {
     try {
       const result = await this.request("ping");
       if (!result || typeof result !== "object") return { ok: false, status: "Apps Script 回傳格式錯誤" };
-      if (result.ok === true) return { ok: true, status: "連線成功" };
-      return { ok: false, status: result.error || "Apps Script 回傳格式錯誤" };
+      if (result.service) return { ok: true, status: "連線成功" };
+      return { ok: false, status: "Apps Script 回傳格式錯誤" };
     } catch (error) {
       const message = String(error.message || error);
       if (/Failed to fetch|NetworkError|Load failed|CORS/i.test(message)) return { ok: false, status: "無法連線或權限未開放" };
@@ -340,6 +397,10 @@ const caseService = {
   async getCase(caseId) {
     if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return remoteClient.request("getCase", { caseId });
     return localStore.readCases().find((item) => item.caseId === caseId) || null;
+  },
+  async getPublicFormCase(caseId, token) {
+    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return remoteClient.request("getPublicFormCase", { caseId, token });
+    return this.getCase(caseId);
   },
   async listCases() {
     if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return remoteClient.request("listCases");
@@ -515,7 +576,7 @@ const caseService = {
     });
   },
   async validateNoticeAccess(caseId, token) {
-    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return remoteClient.request("validateNoticeAccess", { caseId, token });
+    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return remoteClient.request("getPublicNotice", { caseId, token });
     const record = await this.getCase(caseId);
     if (!record || record.noticeAccessToken !== token || record.status !== CASE_STATUS.notice_ready || (!record.noticeFileUrl && !record.noticeFileKey)) return null;
     return noticeFileStore.attachObjectUrl(record);
@@ -597,7 +658,7 @@ const submissionService = {
       viewCount: oldNotice ? 0 : caseRecord.viewCount
     };
     if (CONFIG.ACTIVE_STORAGE_MODE === "remote") {
-      const saved = await remoteClient.request("submitResponse", { caseId: caseRecord.caseId, response, wasRevision, submissionId });
+      const saved = await remoteClient.request("submitResponse", { caseId: caseRecord.caseId, formAccessToken: caseRecord.formAccessToken, response, wasRevision, submissionId });
       return this.mergeCaseAndResponse(saved);
     }
     if (shouldBindUnboundNotice && caseRecord.noticeFileKey) {

@@ -8,5 +8,7 @@ tmp/
 *.tmp
 *.log
 *.mjs
+.clasprc.json
+.clasp.json
 .DS_Store
 Thumbs.db

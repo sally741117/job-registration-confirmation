@@ -351,7 +351,7 @@ async function reloadCase() {
   }
   resetPendingFile();
   fillEditForm(currentCase);
-  openFormLink.href = helpers.formUrl(currentCase.caseId);
+  openFormLink.href = helpers.formUrl(currentCase);
   setVisible(detailView, true);
   renderAll();
 }
@@ -387,7 +387,7 @@ noticeDropZone.addEventListener("drop", (event) => {
   prepareFile(event.dataTransfer.files[0]);
 });
 confirmUploadBtn.addEventListener("click", uploadPendingFile);
-copyFormLinkBtn.addEventListener("click", () => copyText(helpers.formUrl(currentCase.caseId)));
+copyFormLinkBtn.addEventListener("click", () => copyText(helpers.formUrl(currentCase)));
 copyNoticeLinkBtn.addEventListener("click", () => currentCase.noticeFileUrl && copyText(helpers.noticeUrl(currentCase)));
 reopenBtn.addEventListener("click", async () => {
   currentCase = await caseService.reopenForRevision(currentCase.caseId);

@@ -77,7 +77,7 @@ function renderModeBanner() {
 }
 
 function renderCreated(caseRecord) {
-  const url = helpers.formUrl(caseRecord.caseId);
+  const url = helpers.formUrl(caseRecord);
   createdInfo.innerHTML = `
     <div><strong>案件編號</strong><span>${caseRecord.caseId}</span></div>
     <div><strong>公司名稱</strong><span>${caseRecord.companyName}</span></div>
@@ -134,7 +134,7 @@ async function renderCaseList() {
         <div><small>正式通知狀態</small><span>${helpers.noticeStatusLabel(item)}</span></div>
         <div><small>目前狀態</small><span class="status ${item.status}">${helpers.statusLabel(item.status)}</span></div>
         <div class="action-row">
-          ${(item.status === CASE_STATUS.pending || item.status === CASE_STATUS.revision_open) ? `<button class="secondary" data-action="copyForm" data-id="${item.caseId}" type="button">複製填寫連結</button><a class="secondary link-button" href="${helpers.formUrl(item.caseId)}" target="_blank" rel="noreferrer">開啟公司填寫頁</a>` : ""}
+          ${(item.status === CASE_STATUS.pending || item.status === CASE_STATUS.revision_open) ? `<button class="secondary" data-action="copyForm" data-id="${item.caseId}" type="button">複製填寫連結</button><a class="secondary link-button" href="${helpers.formUrl(item)}" target="_blank" rel="noreferrer">開啟公司填寫頁</a>` : ""}
           <a class="primary link-button" href="${detailUrl(item.caseId)}">開啟案件詳情</a>
           ${item.status === CASE_STATUS.notice_ready ? `<button class="secondary" data-action="copyNotice" data-id="${item.caseId}" type="button">複製通知查看網址</button><a class="secondary link-button" href="${helpers.noticeUrl(item)}" target="_blank" rel="noreferrer">開啟通知頁</a>` : ""}
         </div>
@@ -160,7 +160,7 @@ caseForm.addEventListener("submit", async (event) => {
 
 copyCreatedLink.addEventListener("click", async () => {
   if (!createdCase) return;
-  await copyText(helpers.formUrl(createdCase.caseId));
+  await copyText(helpers.formUrl(createdCase));
 });
 
 resetFormBtn.addEventListener("click", () => {
@@ -174,7 +174,7 @@ caseList.addEventListener("click", async (event) => {
   if (!button) return;
   const caseRecord = await caseService.getCase(button.dataset.id);
   if (!caseRecord) return;
-  if (button.dataset.action === "copyForm") await copyText(helpers.formUrl(caseRecord.caseId));
+  if (button.dataset.action === "copyForm") await copyText(helpers.formUrl(caseRecord));
   if (button.dataset.action === "copyNotice") await copyText(helpers.noticeUrl(caseRecord));
 });
 
