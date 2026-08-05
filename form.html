@@ -4,12 +4,26 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>求才登記資料確認表</title>
-  <link rel="stylesheet" href="./styles.css?v=20260805-shape">
-  <script defer src="./services.js?v=20260805-shape"></script>
-  <script defer src="./form.js?v=20260805-shape"></script>
+  <link rel="stylesheet" href="./styles.css?v=20260805-form-speed1">
+  <script defer src="./services.js?v=20260805-form-speed1"></script>
+  <script defer src="./form.js?v=20260805-form-speed1"></script>
 </head>
 <body>
   <main class="shell">
+    <section id="loadingView" class="loading-panel" aria-live="polite">
+      <div class="spinner" aria-hidden="true"></div>
+      <div>
+        <p class="eyebrow">公司端確認表</p>
+        <h1>求才登記資料確認表</h1>
+        <p id="loadingText">正在載入案件資料，請稍候……</p>
+        <p id="loadingDetail" class="hint">系統正在確認專屬填寫連結。</p>
+        <div id="loadingActions" class="action-row hidden">
+          <button id="continueWaitBtn" class="secondary" type="button">繼續等待</button>
+          <button class="primary" type="button" onclick="window.location.reload()">重新載入</button>
+        </div>
+        <div class="skeleton-block" aria-hidden="true"><span></span><span></span><span></span></div>
+      </div>
+    </section>
     <section id="missingView" class="success hidden"><div class="success-panel"><h1 id="missingTitle">案件提示</h1><p id="missingText"></p><a class="secondary link-button" href="./admin.html">返回仲介端</a></div></section>
     <section id="completedView" class="success hidden"><div class="success-panel"><p class="eyebrow">已完成</p><h1>此案件已完成填寫</h1><p>此專屬連結已送出確認資料。承辦人員完成正式求才通知後，會再提供專屬查看連結。</p></div></section>
     <section id="formView" class="hidden">

@@ -2,6 +2,11 @@ let currentCase = null;
 let mergedSubmission = null;
 
 const form = document.querySelector("#jobForm");
+const loadingView = document.querySelector("#loadingView");
+const loadingText = document.querySelector("#loadingText");
+const loadingDetail = document.querySelector("#loadingDetail");
+const loadingActions = document.querySelector("#loadingActions");
+const continueWaitBtn = document.querySelector("#continueWaitBtn");
 const formView = document.querySelector("#formView");
 const missingView = document.querySelector("#missingView");
 const missingTitle = document.querySelector("#missingTitle");
@@ -19,7 +24,39 @@ const selected = (name) => $(`[name="${name}"]:checked`)?.value || "";
 const checkedValues = (name) => $$(`[name="${name}"]:checked`).map((input) => input.value);
 
 function setVisible(el, visible) {
+  if (!el) return;
   el.classList.toggle("hidden", !visible);
+}
+
+let loadingTimers = [];
+
+function clearLoadingTimers() {
+  loadingTimers.forEach((timer) => window.clearTimeout(timer));
+  loadingTimers = [];
+}
+
+function startLoadingState() {
+  setVisible(loadingView, true);
+  setVisible(loadingActions, false);
+  if (loadingText) loadingText.textContent = "正在載入案件資料，請稍候……";
+  if (loadingDetail) loadingDetail.textContent = "系統正在確認專屬填寫連結。";
+  clearLoadingTimers();
+  loadingTimers = [
+    window.setTimeout(() => {
+      if (loadingText) loadingText.textContent = "資料仍在載入，請稍候……";
+      if (loadingDetail) loadingDetail.textContent = "Google 線上服務首次啟動可能需要較長時間。";
+    }, 8000),
+    window.setTimeout(() => {
+      if (loadingText) loadingText.textContent = "連線時間較久，您可以繼續等待或按重新載入。";
+      if (loadingDetail) loadingDetail.textContent = "若網路不穩，重新載入通常可以重新取得案件資料。";
+      setVisible(loadingActions, true);
+    }, 20000)
+  ];
+}
+
+function finishLoadingState() {
+  clearLoadingTimers();
+  setVisible(loadingView, false);
 }
 
 function addError(target, message) {
@@ -251,6 +288,7 @@ function syncVisibility() {
 }
 
 function renderVisibleErrorState(message = "目前無法載入案件資料，請稍後重試或聯絡承辦人員。") {
+  finishLoadingState();
   if (missingTitle) missingTitle.textContent = "案件資料載入失敗";
   if (missingText) {
     missingText.innerHTML = "";
@@ -268,6 +306,12 @@ function renderVisibleErrorState(message = "目前無法載入案件資料，請
   setVisible(successView, false);
   setVisible(missingView, true);
 }
+
+continueWaitBtn?.addEventListener("click", () => {
+  setVisible(loadingActions, false);
+  if (loadingText) loadingText.textContent = "資料仍在載入，請稍候……";
+  if (loadingDetail) loadingDetail.textContent = "系統會在取得案件資料後自動顯示表單。";
+});
 
 form.addEventListener("input", syncVisibility);
 form.addEventListener("change", syncVisibility);
@@ -297,10 +341,12 @@ form.addEventListener("submit", async (event) => {
   }
 });
 async function boot() {
+  startLoadingState();
   const search = new URLSearchParams(window.location.search);
   const caseId = helpers.getCaseIdFromUrl();
   const token = search.get("token") || "";
   if (!caseId || (CONFIG.ACTIVE_STORAGE_MODE === "remote" && !token)) {
+    finishLoadingState();
     missingTitle.textContent = "缺少案件編號";
     missingText.textContent = "請確認填寫連結是否完整，網址需包含 caseId。";
     setVisible(missingView, true);
@@ -311,6 +357,7 @@ async function boot() {
     : await caseService.getCase(caseId);
   if (CONFIG.ACTIVE_STORAGE_MODE === "remote" && currentCase) currentCase.formAccessToken = token;
   if (!currentCase) {
+    finishLoadingState();
     missingTitle.textContent = "案件不存在";
     missingText.textContent = "查無此案件，請聯絡承辦仲介人員確認連結。";
     setVisible(missingView, true);
@@ -318,11 +365,13 @@ async function boot() {
   }
   if ([CASE_STATUS.submitted, CASE_STATUS.preparing_notice, CASE_STATUS.notice_ready].includes(currentCase.status)) {
     mergedSubmission = submissionService.mergeCaseAndResponse(currentCase);
+    finishLoadingState();
     setVisible(completedView, true);
     return;
   }
   ensurePartTimeRow();
   renderCaseInfo(currentCase);
+  finishLoadingState();
   setVisible(formView, true);
   if (currentCase.status === CASE_STATUS.revision_open) {
     const latest = helpers.latestSubmission(currentCase);
