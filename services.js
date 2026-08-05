@@ -544,13 +544,26 @@ const caseService = {
     return caseRecord;
   },
   normalizeCaseRecord(record = {}) {
-    const data = record.data || record.result || record;
+    let data = record;
+    for (let i = 0; i < 4; i += 1) {
+      const next = data?.data || data?.result || data?.case || data?.record || data?.item;
+      if (!next || next === data) break;
+      data = next;
+    }
     return {
       ...data,
       caseId: data.caseId || data.id || "",
       formAccessToken: data.formAccessToken || data.token || data.formToken || "",
       noticeAccessToken: data.noticeAccessToken || data.noticeToken || ""
     };
+  },
+  normalizeCaseList(result) {
+    const data = result?.cases || result?.records || result?.items || result?.list || result?.data || result?.result || result;
+    if (!Array.isArray(data)) {
+      console.error("listCases 回傳格式不是陣列", { keys: data && typeof data === "object" ? Object.keys(data) : [], valueType: typeof data });
+      throw new Error("案件列表回傳格式錯誤。");
+    }
+    return data.map((item) => this.normalizeCaseRecord(item));
   },
   generateCaseId(companyName, cases) {
     const prefix = String(companyName || "CASE").replace(/[^\w\u4e00-\u9fff]/g, "").slice(0, 4).toUpperCase() || "CASE";
@@ -568,11 +581,15 @@ const caseService = {
     return localStore.readCases().find((item) => item.caseId === caseId) || null;
   },
   async getPublicFormCase(caseId, token) {
-    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.normalizeCaseRecord(await remoteClient.request("getPublicFormCase", { caseId, token }));
+    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") {
+      const record = this.normalizeCaseRecord(await remoteClient.request("getPublicFormCase", { caseId, token }));
+      if (!record.companyName && !record.workAddress) throw new Error("案件資料回傳格式錯誤。");
+      return record;
+    }
     return this.getCase(caseId);
   },
   async listCases() {
-    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return (await remoteClient.request("listCases")).map((item) => this.normalizeCaseRecord(item));
+    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.normalizeCaseList(await remoteClient.request("listCases"));
     return localStore.readCases().sort((a, b) => {
       const rank = (item) => {
         if (item.hasUnreadResponse) return 0;
