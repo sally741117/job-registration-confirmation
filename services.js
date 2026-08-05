@@ -283,7 +283,7 @@ const remoteClient = {
     this.setAdminSession(result);
     return result.adminSessionToken;
   },
-  async request(action, payload = {}) {
+  async request(action, payload = {}, options = {}) {
     if (!CONFIG.GOOGLE_APPS_SCRIPT_URL) throw new Error("尚未設定 Google Apps Script URL。");
     const envelope = { action, payload };
     if (this.needsAdmin(action) && !payload.skipAdminSession) {
@@ -295,9 +295,24 @@ const remoteClient = {
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify(envelope)
     });
-    const result = await response.json();
-    if (result?.ok === false && result.status === 401 && this.needsAdmin(action)) {
+    const text = await response.text();
+    let result = null;
+    try {
+      result = JSON.parse(text);
+    } catch (error) {
+      if (this.needsAdmin(action) && !options.retried) {
+        this.clearAdminSession();
+        return this.request(action, payload, { retried: true });
+      }
+      throw new Error("線上服務回傳格式錯誤，請重新登入後再試。");
+    }
+    if ((!response.ok || result?.ok === false) && result.status === 401 && this.needsAdmin(action)) {
       this.clearAdminSession();
+      if (!options.retried) return this.request(action, payload, { retried: true });
+    }
+    if (!response.ok && this.needsAdmin(action) && !options.retried) {
+      this.clearAdminSession();
+      return this.request(action, payload, { retried: true });
     }
     if (!result?.ok) throw new Error(result?.error?.message || result?.error || "線上服務暫時無法使用。");
     return result.result ?? result.data ?? result;
