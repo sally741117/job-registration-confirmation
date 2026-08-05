@@ -109,14 +109,16 @@ async function boot() {
   }
   try {
     const record = await noticeService.getPublicNotice(caseId, token);
-    const viewed = await noticeService.recordNoticeView(caseId, token);
-    currentNotice = viewed || record;
+    currentNotice = record;
     assertNoticeData(currentNotice);
     renderCaseInfo(currentNotice.caseData);
     renderNoticeFile(currentNotice.noticeFile);
     setVisible(loadingView, false);
     setVisible(invalidView, false);
     setVisible(noticeView, true);
+    noticeService.recordNoticeView(caseId, token).catch((error) => {
+      console.warn("通知查看紀錄寫入失敗", error);
+    });
   } catch (error) {
     console.error("Notice initialization failed:", error);
     renderError(error.message || "目前無法載入求才通知，請稍後再試或聯絡承辦人員。");
