@@ -305,9 +305,15 @@ const remoteClient = {
       const result = await this.request("adminLogin", { email: credentials.email, adminCode: credentials.adminCode, skipAdminSession: true }, { skipAuthRetry: true });
       const normalized = this.normalizeAdminLogin(result);
       if (!normalized.token) throw new Error("管理員登入失敗。");
-      const sessionCheck = this.normalizeSessionCheck(await this.request("adminSessionCheck", { skipAdminSession: true }, { adminSessionToken: normalized.token, skipAuthRetry: true }));
-      if (!sessionCheck.authenticated) throw new Error("管理員 session 驗證失敗。");
-      this.setAdminSession({ ...normalized, email: normalized.email || sessionCheck.email, expiresAt: normalized.expiresAt || sessionCheck.expiresAt });
+      this.setAdminSession(normalized);
+      this.request("adminSessionCheck", { skipAdminSession: true }, { adminSessionToken: normalized.token, skipAuthRetry: true })
+        .then((sessionCheck) => {
+          const checked = this.normalizeSessionCheck(sessionCheck);
+          if (!checked.authenticated) this.clearAdminSession();
+        })
+        .catch((error) => {
+          console.warn("管理員 session 背景驗證未完成", error);
+        });
       this.lastAuthFailureAt = 0;
       return normalized.token;
     } catch (error) {
