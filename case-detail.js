@@ -26,6 +26,7 @@ const noticeHistory = document.querySelector("#noticeHistory");
 const openNoticeLinkBtn = document.querySelector("#openNoticeLinkBtn");
 const copyNoticeLinkBtn = document.querySelector("#copyNoticeLinkBtn");
 const deleteNoticeBtn = document.querySelector("#deleteNoticeBtn");
+const deleteCaseBtn = document.querySelector("#deleteCaseBtn");
 const openFormLink = document.querySelector("#openFormLink");
 const copyFormLinkBtn = document.querySelector("#copyFormLinkBtn");
 const reopenBtn = document.querySelector("#reopenBtn");
@@ -398,6 +399,18 @@ deleteNoticeBtn.addEventListener("click", async () => {
   currentCase = await caseService.deleteNoticeFile(currentCase.caseId);
   resetPendingFile();
   renderAll();
+});
+deleteCaseBtn.addEventListener("click", async () => {
+  if (!currentCase) return;
+  const confirmed = await deleteCaseDialog.confirm(currentCase);
+  if (!confirmed) return;
+  try {
+    await caseService.deleteCase(currentCase.caseId);
+    window.location.href = "./admin.html";
+  } catch (error) {
+    console.error("刪除案件失敗", error);
+    alert(error.message || "刪除案件失敗，請稍後再試。");
+  }
 });
 downloadInternalPdfBtn.addEventListener("click", async () => {
   const latest = helpers.latestSubmission(currentCase);

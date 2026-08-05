@@ -134,6 +134,12 @@ async function renderCaseList() {
         <div><small>正式通知狀態</small><span>${helpers.noticeStatusLabel(item)}</span></div>
         <div><small>目前狀態</small><span class="status ${item.status}">${helpers.statusLabel(item.status)}</span></div>
         <div class="action-row">
+          <details class="more-actions">
+            <summary>更多操作</summary>
+            <div class="more-actions-menu">
+              <button class="danger" data-action="deleteCase" data-id="${item.caseId}" type="button">刪除案件</button>
+            </div>
+          </details>
           ${(item.status === CASE_STATUS.pending || item.status === CASE_STATUS.revision_open) ? `<button class="secondary" data-action="copyForm" data-id="${item.caseId}" type="button">複製填寫連結</button><a class="secondary link-button" href="${helpers.formUrl(item)}" target="_blank" rel="noreferrer">開啟公司填寫頁</a>` : ""}
           <a class="primary link-button" href="${detailUrl(item.caseId)}">開啟案件詳情</a>
           ${item.status === CASE_STATUS.notice_ready ? `<button class="secondary" data-action="copyNotice" data-id="${item.caseId}" type="button">複製通知查看網址</button><a class="secondary link-button" href="${helpers.noticeUrl(item)}" target="_blank" rel="noreferrer">開啟通知頁</a>` : ""}
@@ -176,6 +182,21 @@ caseList.addEventListener("click", async (event) => {
   if (!caseRecord) return;
   if (button.dataset.action === "copyForm") await copyText(helpers.formUrl(caseRecord));
   if (button.dataset.action === "copyNotice") await copyText(helpers.noticeUrl(caseRecord));
+  if (button.dataset.action === "deleteCase") {
+    const confirmed = await deleteCaseDialog.confirm(caseRecord);
+    if (!confirmed) return;
+    try {
+      await caseService.deleteCase(caseRecord.caseId);
+      if (createdCase?.caseId === caseRecord.caseId) {
+        createdCase = null;
+        createdPanel.classList.add("hidden");
+      }
+      await renderCaseList();
+    } catch (error) {
+      console.error("刪除案件失敗", error);
+      alert(error.message || "刪除案件失敗，請稍後再試。");
+    }
+  }
 });
 
 refreshListBtn.addEventListener("click", renderCaseList);

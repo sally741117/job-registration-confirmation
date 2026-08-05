@@ -32,7 +32,8 @@ const CASE_STATUS = {
   submitted: "submitted",
   preparing_notice: "preparing_notice",
   notice_ready: "notice_ready",
-  revision_open: "revision_open"
+  revision_open: "revision_open",
+  deleted: "deleted"
 };
 
 const STORE_KEYS = {
@@ -127,6 +128,7 @@ const helpers = {
     if (status === CASE_STATUS.preparing_notice) return "求才通知製作中";
     if (status === CASE_STATUS.notice_ready) return "求才通知已完成";
     if (status === CASE_STATUS.revision_open) return "已重新開放修改";
+    if (status === CASE_STATUS.deleted) return "已刪除";
     return "待公司填寫";
   },
   modeMessage() {
@@ -176,6 +178,50 @@ const helpers = {
     const extension = String(data.extension || "").trim();
     if (!phone) return "＿＿＿＿＿＿";
     return extension ? `${phone} 分機 ${extension}` : phone;
+  }
+};
+
+const deleteCaseDialog = {
+  confirm(caseRecord = {}) {
+    return new Promise((resolve) => {
+      const companyName = String(caseRecord.companyName || "").trim();
+      const caseId = String(caseRecord.caseId || "").trim();
+      const overlay = document.createElement("div");
+      overlay.className = "delete-dialog-backdrop";
+      overlay.innerHTML = `
+        <section class="delete-dialog" role="dialog" aria-modal="true" aria-labelledby="deleteCaseTitle">
+          <h2 id="deleteCaseTitle">刪除案件</h2>
+          <div class="delete-dialog-summary">
+            <p><strong>公司名稱：</strong><span>${companyName}</span></p>
+            <p><strong>案件編號：</strong><span class="breakable">${caseId}</span></p>
+          </div>
+          <p class="delete-warning">刪除後將同步移除公司回覆、上傳檔案、填寫連結及通知連結，且無法復原。</p>
+          <label class="delete-confirm-label">請輸入公司名稱「${companyName}」確認。
+            <input id="deleteCaseConfirmInput" type="text" autocomplete="off">
+          </label>
+          <div class="delete-dialog-actions">
+            <button type="button" class="secondary" data-cancel>取消</button>
+            <button type="button" class="danger" data-confirm disabled>確認刪除</button>
+          </div>
+        </section>
+      `;
+      const input = overlay.querySelector("#deleteCaseConfirmInput");
+      const confirmBtn = overlay.querySelector("[data-confirm]");
+      const cleanup = (value) => {
+        overlay.remove();
+        resolve(value);
+      };
+      input.addEventListener("input", () => {
+        confirmBtn.disabled = input.value.trim() !== companyName;
+      });
+      overlay.querySelector("[data-cancel]").addEventListener("click", () => cleanup(false));
+      confirmBtn.addEventListener("click", () => cleanup(true));
+      overlay.addEventListener("click", (event) => {
+        if (event.target === overlay) cleanup(false);
+      });
+      document.body.appendChild(overlay);
+      input.focus();
+    });
   }
 };
 
@@ -584,7 +630,7 @@ const caseService = {
   },
   async listCases() {
     if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.normalizeCaseList(await remoteClient.request("listCases"));
-    return localStore.readCases().sort((a, b) => {
+    return localStore.readCases().filter((item) => item.status !== CASE_STATUS.deleted && !item.deletedAt).sort((a, b) => {
       const rank = (item) => {
         if (item.hasUnreadResponse) return 0;
         if (helpers.latestSubmission(item) && !item.noticeFileUrl) return 1;
@@ -595,6 +641,53 @@ const caseService = {
       if (rankDiff) return rankDiff;
       return String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt));
     });
+  },
+  async deleteCase(caseId) {
+    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.normalizeCaseRecord(await remoteClient.request("deleteCase", { caseId }));
+    const cases = localStore.readCases();
+    const index = cases.findIndex((item) => item.caseId === caseId);
+    if (index === -1) throw new Error("案件不存在。");
+    const record = cases[index];
+    if (record.noticeFileKey) {
+      try {
+        await noticeFileStore.delete(record.noticeFileKey);
+      } catch (error) {
+        console.error("IndexedDB 刪除求才內容檔案失敗", { caseId, fileKey: record.noticeFileKey, error });
+      }
+    }
+    const now = new Date().toISOString();
+    cases[index] = {
+      ...record,
+      status: CASE_STATUS.deleted,
+      deletedAt: now,
+      deletedBy: "local",
+      updatedAt: now,
+      formAccessToken: "",
+      noticeAccessToken: "",
+      latestSubmissionId: "",
+      submissions: [],
+      response: null,
+      submittedAt: null,
+      hasUnreadResponse: false,
+      responseViewedAt: "",
+      noticeFileId: "",
+      noticeFileName: "",
+      noticeFileType: "",
+      noticeFileUrl: "",
+      noticeFileKey: "",
+      noticeFileSize: 0,
+      noticeUploadedAt: null,
+      noticeSubmissionId: "",
+      noticeUploadedBy: "",
+      noticeUpload: null,
+      noticeHistory: [],
+      noticeViewed: false,
+      firstViewedAt: "",
+      lastViewedAt: "",
+      viewCount: 0
+    };
+    localStore.writeCases(cases);
+    return cases[index];
   },
   async updateCase(updatedCase) {
     if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.normalizeCaseRecord(await remoteClient.request("updateCase", updatedCase));
