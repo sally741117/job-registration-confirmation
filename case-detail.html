@@ -5,16 +5,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>案件詳情</title>
   <link rel="stylesheet" href="./styles.css?v=20260805-delete3">
-  <script defer src="./services.js?v=20260805-delete3"></script>
-  <script defer src="./case-detail.js?v=20260805-delete3"></script>
+  <script defer src="./services.js?v=20260805-detailfix2"></script>
+  <script defer src="./case-detail.js?v=20260805-detailfix2"></script>
 </head>
 <body class="admin-body">
   <main class="shell admin-shell">
+    <section id="loadingView" class="card">
+      <div class="section-title"><span>...</span><h1>案件詳情</h1></div>
+      <p class="hint">案件資料載入中...</p>
+      <div class="action-row">
+        <a class="secondary link-button" href="./admin.html">返回案件列表</a>
+      </div>
+    </section>
+
     <section id="missingView" class="success hidden">
       <div class="success-panel">
         <h1 id="missingTitle">案件不存在</h1>
         <p id="missingText"></p>
-        <a class="secondary link-button" href="./admin.html">返回案件列表</a>
+        <div class="action-row">
+          <button id="retryLoadBtn" class="secondary" type="button">重新載入</button>
+          <a class="secondary link-button" href="./admin.html">返回案件列表</a>
+        </div>
       </div>
     </section>
 

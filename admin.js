@@ -133,6 +133,7 @@ async function copyText(text) {
 
 function detailUrl(caseId) {
   const url = new URL(`case-detail.html?caseId=${encodeURIComponent(caseId)}`, window.location.href);
+  url.searchParams.set("detailVersion", "20260805-detailfix2");
   if (CONFIG.ACTIVE_STORAGE_MODE === "local") url.searchParams.set("storage", "local");
   return url.href;
 }

@@ -6,6 +6,8 @@ let pendingUploadCaseId = "";
 const missingView = document.querySelector("#missingView");
 const missingTitle = document.querySelector("#missingTitle");
 const missingText = document.querySelector("#missingText");
+const loadingView = document.querySelector("#loadingView");
+const retryLoadBtn = document.querySelector("#retryLoadBtn");
 const detailView = document.querySelector("#detailView");
 const caseHeader = document.querySelector("#caseHeader");
 const progressPanel = document.querySelector("#progressPanel");
@@ -37,7 +39,36 @@ const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
 function setVisible(el, visible) {
+  if (!el) return;
   el.classList.toggle("hidden", !visible);
+}
+
+function safeCaseIdFromUrl() {
+  try {
+    return new URLSearchParams(window.location.search).get("caseId")?.trim() || "";
+  } catch (error) {
+    console.warn("caseId 解析失敗", error);
+    return "";
+  }
+}
+
+function readableError(error, fallback = "案件資料載入失敗，請稍後再試。") {
+  return error?.message || String(error || "") || fallback;
+}
+
+function showLoading() {
+  setVisible(loadingView, true);
+  setVisible(missingView, false);
+  setVisible(detailView, false);
+}
+
+function showMessage(title, message, canRetry = true) {
+  missingTitle.textContent = title;
+  missingText.textContent = message;
+  if (retryLoadBtn) retryLoadBtn.classList.toggle("hidden", !canRetry);
+  setVisible(loadingView, false);
+  setVisible(detailView, false);
+  setVisible(missingView, true);
 }
 
 function copyText(text) {
@@ -367,6 +398,48 @@ function renderAll() {
   renderViewRecord();
 }
 
+async function initDetailPage() {
+  showLoading();
+  try {
+    const caseId = safeCaseIdFromUrl();
+    if (!caseId) {
+      showMessage("缺少案件編號", "請從案件列表進入案件詳情，或確認網址中包含 caseId。", false);
+      return;
+    }
+    currentCase = await caseService.getCase(caseId);
+    if (!currentCase) {
+      showMessage("案件不存在", "找不到此案件，案件可能已刪除或連結錯誤。", true);
+      return;
+    }
+    if (currentCase.caseId && currentCase.caseId !== caseId) {
+      console.warn("案件編號回傳不一致", { requestedCaseId: caseId, returnedCaseId: currentCase.caseId });
+    }
+    if (currentCase.hasUnreadResponse) {
+      try {
+        currentCase = await caseService.markResponseViewed(currentCase.caseId);
+      } catch (markError) {
+        console.warn("回覆查看狀態更新失敗", markError);
+      }
+    }
+    resetPendingFile();
+    fillEditForm(currentCase);
+    openFormLink.href = helpers.formUrl(currentCase);
+    renderAll();
+    setVisible(missingView, false);
+    setVisible(detailView, true);
+  } catch (error) {
+    console.warn("案件資料載入失敗", error);
+    const summary = readableError(error);
+    if (/不存在|失效|404/.test(summary)) {
+      showMessage("案件不存在", "找不到此案件，案件可能已刪除或連結錯誤。", true);
+    } else {
+      showMessage("案件資料載入失敗", summary, true);
+    }
+  } finally {
+    setVisible(loadingView, false);
+  }
+}
+
 editCaseForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const input = collectCaseInput();
@@ -421,4 +494,10 @@ downloadInternalPdfBtn.addEventListener("click", async () => {
   await pdfService.download(submissionService.mergeCaseAndResponse(currentCase), pdfTemplate);
 });
 
-reloadCase();
+retryLoadBtn?.addEventListener("click", initDetailPage);
+
+initDetailPage().catch((error) => {
+  console.warn("案件詳情初始化失敗", error);
+  showMessage("案件資料載入失敗", readableError(error), true);
+  setVisible(loadingView, false);
+});

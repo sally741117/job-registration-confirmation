@@ -405,7 +405,7 @@ const remoteClient = {
     try {
       result = JSON.parse(text);
     } catch (error) {
-      console.error("Remote API returned non-JSON", {
+      console.warn("Remote API returned non-JSON", {
         action,
         httpStatus: response.status,
         contentType: response.headers.get("content-type") || "",
