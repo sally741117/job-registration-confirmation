@@ -19,6 +19,7 @@ let createInProgress = false;
 let createRequestId = "";
 let highlightedCaseId = "";
 let caseListLoadSerial = 0;
+let caseListLoading = false;
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -188,7 +189,10 @@ function noticeStatusForList(item, latest) {
 }
 
 async function renderCaseList(options = {}) {
+  if (caseListLoading && !options.force) return false;
+  caseListLoading = true;
   const loadSerial = ++caseListLoadSerial;
+  try {
   let cases = [];
   caseList.innerHTML = `<p class="empty">案件資料載入中...</p>`;
   if (
@@ -251,6 +255,9 @@ async function renderCaseList(options = {}) {
       ?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
   return true;
+  } finally {
+    if (loadSerial === caseListLoadSerial) caseListLoading = false;
+  }
 }
 
 async function renderCaseListWithRetry(options = {}) {
@@ -289,7 +296,7 @@ caseForm.addEventListener("submit", async (event) => {
     setCreateBusy(false);
     let listUpdated = false;
     try {
-      listUpdated = await renderCaseListWithRetry({ expectedCaseId: highlightedCaseId });
+      listUpdated = await renderCaseListWithRetry({ expectedCaseId: highlightedCaseId, force: true });
     } catch (listError) {
       console.error("案件已建立，但列表更新失敗", listError);
       renderListError(listError);
