@@ -184,6 +184,7 @@ const remoteClient = {
   requestTimeoutMs: 25000,
   adminAuthPromise: null,
   loginModalOpen: false,
+  lastAuthFailureAt: 0,
   getAdminSession() {
     try {
       const raw = localStorage.getItem(this.adminSessionKey) || sessionStorage.getItem(this.adminSessionKey);
@@ -287,6 +288,9 @@ const remoteClient = {
   async ensureAdminSession() {
     const existing = this.getAdminSession();
     if (this.isSessionUsable(existing)) return existing.token;
+    if (Date.now() - this.lastAuthFailureAt < 8000) {
+      throw new Error("管理員登入尚未完成，請稍後再試。");
+    }
     if (this.adminAuthPromise) return this.adminAuthPromise;
     this.adminAuthPromise = this.loginAndStoreSession()
       .finally(() => {
@@ -295,13 +299,21 @@ const remoteClient = {
     return this.adminAuthPromise;
   },
   async loginAndStoreSession() {
-    const credentials = await this.showAdminLoginDialog();
-    if (!credentials.email || !credentials.adminCode) throw new Error("尚未登入管理後台。");
-    const result = await this.request("adminLogin", { email: credentials.email, adminCode: credentials.adminCode, skipAdminSession: true }, { skipAuthRetry: true });
-    const normalized = this.normalizeAdminLogin(result);
-    if (!normalized.token) throw new Error("管理員登入失敗。");
-    this.setAdminSession(normalized);
-    return normalized.token;
+    try {
+      const credentials = await this.showAdminLoginDialog();
+      if (!credentials.email || !credentials.adminCode) throw new Error("尚未登入管理後台。");
+      const result = await this.request("adminLogin", { email: credentials.email, adminCode: credentials.adminCode, skipAdminSession: true }, { skipAuthRetry: true });
+      const normalized = this.normalizeAdminLogin(result);
+      if (!normalized.token) throw new Error("管理員登入失敗。");
+      const sessionCheck = this.normalizeSessionCheck(await this.request("adminSessionCheck", { skipAdminSession: true }, { adminSessionToken: normalized.token, skipAuthRetry: true }));
+      if (!sessionCheck.authenticated) throw new Error("管理員 session 驗證失敗。");
+      this.setAdminSession({ ...normalized, email: normalized.email || sessionCheck.email, expiresAt: normalized.expiresAt || sessionCheck.expiresAt });
+      this.lastAuthFailureAt = 0;
+      return normalized.token;
+    } catch (error) {
+      this.lastAuthFailureAt = Date.now();
+      throw error;
+    }
   },
   normalizeAdminLogin(result = {}) {
     return {
@@ -349,6 +361,12 @@ const remoteClient = {
     try {
       result = JSON.parse(text);
     } catch (error) {
+      console.error("Remote API returned non-JSON", {
+        action,
+        httpStatus: response.status,
+        contentType: response.headers.get("content-type") || "",
+        preview: text.slice(0, 200)
+      });
       throw new Error("線上服務回傳格式錯誤，請重新登入後再試。");
     }
     if ((!response.ok || result?.ok === false) && result.status === 401 && this.needsAdmin(action) && !options.skipAuthRetry) {
