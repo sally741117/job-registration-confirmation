@@ -841,7 +841,7 @@ const pdfService = {
       link.click();
       link.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 2000);
-      if (data.caseId) {
+      if (data.caseId && !data.skipPdfInfoSave) {
         await caseService.savePdfInfo(data.caseId, { pdfFileName: filename, pdfUrl: "" });
       }
       return filename;

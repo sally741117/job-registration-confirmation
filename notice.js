@@ -44,7 +44,7 @@ downloadPdfBtn.addEventListener("click", async () => {
   downloadPdfBtn.disabled = true;
   downloadPdfBtn.textContent = "產生中...";
   try {
-    await pdfService.download(currentRecord, pdfTemplate);
+    await pdfService.download({ ...currentRecord, skipPdfInfoSave: true }, pdfTemplate);
   } catch (error) {
     console.error("下載求才通知單 PDF 失敗", { caseId: currentRecord.caseId, error });
   } finally {
