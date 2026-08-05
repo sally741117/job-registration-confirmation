@@ -643,7 +643,19 @@ const caseService = {
     });
   },
   async deleteCase(caseId) {
-    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.normalizeCaseRecord(await remoteClient.request("deleteCase", { caseId }));
+    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") {
+      try {
+        return this.normalizeCaseRecord(await remoteClient.request("deleteCase", { caseId }));
+      } catch (error) {
+        if (String(error.message || "").includes("回傳格式錯誤")) {
+          const cases = await this.listCases();
+          if (!cases.some((item) => item.caseId === caseId)) {
+            return { caseId, status: CASE_STATUS.deleted };
+          }
+        }
+        throw error;
+      }
+    }
     const cases = localStore.readCases();
     const index = cases.findIndex((item) => item.caseId === caseId);
     if (index === -1) throw new Error("案件不存在。");
