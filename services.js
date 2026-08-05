@@ -177,6 +177,44 @@ const remoteClient = {
   clearAdminSession() {
     sessionStorage.removeItem(this.adminSessionKey);
   },
+  showAdminLoginDialog() {
+    return new Promise((resolve, reject) => {
+      const existing = document.querySelector("#adminLoginDialog");
+      if (existing) existing.remove();
+      const overlay = document.createElement("div");
+      overlay.id = "adminLoginDialog";
+      overlay.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:20px;";
+      overlay.innerHTML = `
+        <form style="width:min(420px,100%);background:#fff;border-radius:8px;padding:20px;box-shadow:0 20px 60px rgba(15,23,42,.25);display:grid;gap:12px;">
+          <h2 style="margin:0;font-size:20px;">管理員登入</h2>
+          <p style="margin:0;color:#475569;font-size:14px;">請輸入已授權的管理員 Email 與驗證碼。</p>
+          <label style="display:grid;gap:6px;font-size:14px;">Email<input name="email" type="email" autocomplete="username" required style="font:inherit;padding:10px;border:1px solid #cbd5e1;border-radius:6px;"></label>
+          <label style="display:grid;gap:6px;font-size:14px;">驗證碼<input name="adminCode" type="password" autocomplete="current-password" required style="font:inherit;padding:10px;border:1px solid #cbd5e1;border-radius:6px;"></label>
+          <div style="display:flex;gap:10px;justify-content:flex-end;">
+            <button type="button" data-cancel style="padding:10px 14px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;">取消</button>
+            <button type="submit" style="padding:10px 14px;border:0;background:#2563eb;color:#fff;border-radius:6px;">登入</button>
+          </div>
+        </form>
+      `;
+      const form = overlay.querySelector("form");
+      const cleanup = () => overlay.remove();
+      overlay.querySelector("[data-cancel]").addEventListener("click", () => {
+        cleanup();
+        reject(new Error("尚未登入管理後台。"));
+      });
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const data = new FormData(form);
+        cleanup();
+        resolve({
+          email: String(data.get("email") || "").trim(),
+          adminCode: String(data.get("adminCode") || "").trim()
+        });
+      });
+      document.body.appendChild(overlay);
+      form.email.focus();
+    });
+  },
   needsAdmin(action) {
     return [
       "createCase",
@@ -198,11 +236,9 @@ const remoteClient = {
   async ensureAdminSession() {
     const existing = this.getAdminSession();
     if (existing?.adminSessionToken) return existing.adminSessionToken;
-    const email = window.prompt("請輸入管理員 Email");
-    if (!email) throw new Error("尚未登入管理後台。");
-    const adminCode = window.prompt("請輸入管理員驗證碼");
-    if (!adminCode) throw new Error("尚未登入管理後台。");
-    const result = await this.request("adminLogin", { email: email.trim(), adminCode: adminCode.trim(), skipAdminSession: true });
+    const credentials = await this.showAdminLoginDialog();
+    if (!credentials.email || !credentials.adminCode) throw new Error("尚未登入管理後台。");
+    const result = await this.request("adminLogin", { email: credentials.email, adminCode: credentials.adminCode, skipAdminSession: true });
     if (!result?.adminSessionToken) throw new Error("管理員登入失敗。");
     this.setAdminSession(result);
     return result.adminSessionToken;
