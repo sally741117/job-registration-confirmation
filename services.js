@@ -306,14 +306,6 @@ const remoteClient = {
       const normalized = this.normalizeAdminLogin(result);
       if (!normalized.token) throw new Error("管理員登入失敗。");
       this.setAdminSession(normalized);
-      this.request("adminSessionCheck", { skipAdminSession: true }, { adminSessionToken: normalized.token, skipAuthRetry: true })
-        .then((sessionCheck) => {
-          const checked = this.normalizeSessionCheck(sessionCheck);
-          if (!checked.authenticated) this.clearAdminSession();
-        })
-        .catch((error) => {
-          console.warn("管理員 session 背景驗證未完成", error);
-        });
       this.lastAuthFailureAt = 0;
       return normalized.token;
     } catch (error) {
@@ -373,9 +365,11 @@ const remoteClient = {
         contentType: response.headers.get("content-type") || "",
         preview: text.slice(0, 200)
       });
-      throw new Error("線上服務回傳格式錯誤，請重新登入後再試。");
+      throw new Error("線上服務回傳格式錯誤，請稍後重試。");
     }
-    if ((!response.ok || result?.ok === false) && result.status === 401 && this.needsAdmin(action) && !options.skipAuthRetry) {
+    const authCode = result?.code || result?.error?.code || "";
+    const isExplicitAuthFailure = ["UNAUTHORIZED", "SESSION_EXPIRED"].includes(authCode);
+    if ((!response.ok || result?.ok === false) && result.status === 401 && isExplicitAuthFailure && this.needsAdmin(action) && !options.skipAuthRetry) {
       this.clearAdminSession();
       if (!options.retried) return this.request(action, payload, { retried: true });
     }
