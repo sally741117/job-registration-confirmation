@@ -194,7 +194,7 @@ async function renderCaseList(options = {}) {
   const loadSerial = ++caseListLoadSerial;
   try {
   let cases = [];
-  caseList.innerHTML = `<p class="empty">案件資料載入中...</p>`;
+  if (!options.silent) caseList.innerHTML = `<p class="empty">案件資料載入中...</p>`;
   if (
     CONFIG.ACTIVE_STORAGE_MODE === "remote"
     && typeof remoteClient !== "undefined"
@@ -213,6 +213,7 @@ async function renderCaseList(options = {}) {
   } catch (error) {
     if (loadSerial !== caseListLoadSerial) return false;
     console.error("案件列表更新失敗", error);
+    if (options.silent) return false;
     renderListError(error);
     return false;
   }
@@ -405,7 +406,7 @@ if (!requestedCaseId) {
 
   try {
     window.setInterval(() => {
-      renderCaseList().catch((error) => {
+      renderCaseList({ silent: true }).catch((error) => {
         console.error("案件列表定時更新失敗", error);
         renderListError(error);
       });
