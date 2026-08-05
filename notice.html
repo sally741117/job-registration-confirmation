@@ -4,12 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>求才登記通知</title>
-  <link rel="stylesheet" href="./styles.css?v=20260805-admin-light1">
-  <script defer src="./services.js?v=20260805-admin-light1"></script>
-  <script defer src="./notice.js?v=20260805-admin-light1"></script>
+  <link rel="stylesheet" href="./styles.css?v=20260805-noticefix1">
+  <script defer src="./services.js?v=20260805-noticefix1"></script>
+  <script defer src="./notice.js?v=20260805-noticefix1"></script>
 </head>
 <body>
   <main class="shell notice-shell">
+    <section id="loadingView" class="success">
+      <div class="success-panel">
+        <h1>正在載入求才通知，請稍候……</h1>
+      </div>
+    </section>
     <section id="invalidView" class="success hidden">
       <div class="success-panel">
         <h1>此通知連結無效或尚未開放</h1>

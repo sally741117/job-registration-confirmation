@@ -902,6 +902,80 @@ const caseService = {
   }
 };
 
+const noticeService = {
+  normalize(raw = {}) {
+    let data = raw;
+    for (let i = 0; i < 3; i += 1) {
+      const next = data?.data || data?.result;
+      if (!next || next === data) break;
+      data = next;
+    }
+    if (data.caseData && data.noticeFile) {
+      return {
+        ok: true,
+        caseData: data.caseData,
+        noticeFile: data.noticeFile,
+        latestSubmission: data.latestSubmission || null
+      };
+    }
+    const caseSource = data.case || data.record || data;
+    const fileSource = data.noticeFile || {};
+    const latestSubmission = data.latestSubmission || helpers.latestSubmission(caseSource) || null;
+    return {
+      ok: true,
+      caseData: {
+        caseId: caseSource.caseId || "",
+        status: caseSource.status || "",
+        companyName: caseSource.companyName || "",
+        workAddress: caseSource.workAddress || "",
+        contactName: caseSource.contactName || "",
+        contactPhone: caseSource.contactPhone || "",
+        extension: caseSource.extension || "",
+        recruitmentDate: caseSource.recruitmentDate || "",
+        industry: caseSource.industry || "",
+        recruitmentCount: helpers.hasRecruitmentCount(caseSource) ? Number(caseSource.recruitmentCount) : null,
+        publicPhone: caseSource.publicPhone || "",
+        agencyCompany: caseSource.agencyCompany || "",
+        latestSubmissionId: latestSubmission?.submissionId || caseSource.latestSubmissionId || ""
+      },
+      noticeFile: {
+        fileName: fileSource.fileName || caseSource.noticeFileName || "",
+        fileType: fileSource.fileType || caseSource.noticeFileType || "",
+        fileSize: Number(fileSource.fileSize || caseSource.noticeFileSize || 0),
+        previewUrl: fileSource.previewUrl || fileSource.fileUrl || caseSource.noticeFileUrl || "",
+        downloadUrl: fileSource.downloadUrl || fileSource.fileUrl || caseSource.noticeFileUrl || ""
+      },
+      latestSubmission
+    };
+  },
+  async getPublicNotice(caseId, token) {
+    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") {
+      return this.normalize(await remoteClient.request("getPublicNotice", { caseId, token }));
+    }
+    return this.normalize(await caseService.validateNoticeAccess(caseId, token));
+  },
+  async recordNoticeView(caseId, token) {
+    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") {
+      return this.normalize(await remoteClient.request("recordNoticeView", { caseId, token }));
+    }
+    return this.normalize(await caseService.recordNoticeView(caseId, token));
+  },
+  pdfData(result) {
+    const latest = result.latestSubmission || {};
+    const response = latest.response || latest.responseJson || {};
+    return {
+      ...result.caseData,
+      ...response,
+      response,
+      submissions: latest.submissionId ? [latest] : [],
+      latestSubmissionId: latest.submissionId || result.caseData.latestSubmissionId || "",
+      submissionId: latest.submissionId || "",
+      submittedAt: latest.submittedAt || "",
+      skipPdfInfoSave: true
+    };
+  }
+};
+
 const submissionService = {
   async submitResponse(caseRecord, response) {
     const submittedAt = new Date().toISOString();
