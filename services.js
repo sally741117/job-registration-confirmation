@@ -644,12 +644,27 @@ const caseService = {
   },
   async deleteCase(caseId) {
     if (CONFIG.ACTIVE_STORAGE_MODE === "remote") {
+      const runDelete = () => remoteClient.request("deleteCase", { caseId });
+      const verifyDeleted = async () => {
+        const cases = await this.listCases();
+        return !cases.some((item) => item.caseId === caseId);
+      };
       try {
-        return this.normalizeCaseRecord(await remoteClient.request("deleteCase", { caseId }));
+        return this.normalizeCaseRecord(await runDelete());
       } catch (error) {
+        if (String(error.message || "").includes("Failed to fetch")) {
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+          try {
+            return this.normalizeCaseRecord(await runDelete());
+          } catch (retryError) {
+            if (String(retryError.message || "").includes("回傳格式錯誤") && await verifyDeleted()) {
+              return { caseId, status: CASE_STATUS.deleted };
+            }
+            throw retryError;
+          }
+        }
         if (String(error.message || "").includes("回傳格式錯誤")) {
-          const cases = await this.listCases();
-          if (!cases.some((item) => item.caseId === caseId)) {
+          if (await verifyDeleted()) {
             return { caseId, status: CASE_STATUS.deleted };
           }
         }
