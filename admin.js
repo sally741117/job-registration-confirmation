@@ -212,12 +212,20 @@ async function renderCaseList(options = {}) {
     }
   } catch (error) {
     if (loadSerial !== caseListLoadSerial) return false;
-    console.error("案件列表更新失敗", error);
+    const log = isRetryableListError(error) ? console.warn : console.error;
+    log("案件列表更新失敗", error);
     if (options.silent) return false;
     renderListError(error);
     return false;
   }
   if (loadSerial !== caseListLoadSerial) return false;
+  if (
+    highlightedCaseId
+    && cases.some((item) => item.caseId === highlightedCaseId)
+    && (caseFormStatus?.textContent || "").includes("案件列表更新失敗")
+  ) {
+    setFormStatus("案件建立成功，案件列表已更新。", "success");
+  }
   lastUpdatedText.textContent = `最後更新：${helpers.displayDateTime(new Date().toISOString())}`;
   if (!cases.length) {
     caseList.innerHTML = `<p class="empty">目前尚未建立案件。</p>`;
@@ -304,6 +312,8 @@ caseForm.addEventListener("submit", async (event) => {
     }
     if (!listUpdated) {
       setFormStatus("案件已建立成功，但案件列表更新失敗，請按重新載入。", "warning");
+    } else {
+      setFormStatus("案件建立成功，案件列表已更新。", "success");
     }
   } catch (error) {
     console.error("建立案件失敗", error);
