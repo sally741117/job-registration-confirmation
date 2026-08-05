@@ -110,7 +110,9 @@ function workflowText(item) {
 async function renderCaseList() {
   let cases = [];
   try {
-    cases = await caseService.listCases();
+    const result = await caseService.listCases();
+    if (!Array.isArray(result.cases)) throw new Error("案件列表回傳格式錯誤。");
+    cases = result.cases.filter((item) => item.status !== CASE_STATUS.deleted && !item.deletedAt);
   } catch (error) {
     console.error("案件列表更新失敗", error);
     caseList.innerHTML = `<p class="empty">案件列表更新失敗：${error.message || "線上服務暫時無法使用，請稍後再試。"}</p>`;

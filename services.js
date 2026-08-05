@@ -602,12 +602,41 @@ const caseService = {
     };
   },
   normalizeCaseList(result) {
-    const data = result?.cases || result?.records || result?.items || result?.list || result?.data || result?.result || result;
-    if (!Array.isArray(data)) {
-      console.error("listCases 回傳格式不是陣列", { keys: data && typeof data === "object" ? Object.keys(data) : [], valueType: typeof data });
+    const candidates = [
+      result?.cases,
+      result?.data?.cases,
+      result?.result?.cases,
+      Array.isArray(result?.data) ? result.data : null,
+      Array.isArray(result?.result) ? result.result : null,
+      Array.isArray(result) ? result : null
+    ];
+    const data = candidates.find((value) => Array.isArray(value));
+    if (!data) {
+      console.error("listCases 回傳格式不是陣列", {
+        keys: result && typeof result === "object" ? Object.keys(result) : [],
+        valueType: typeof result
+      });
       throw new Error("案件列表回傳格式錯誤。");
     }
-    return data.map((item) => this.normalizeCaseRecord(item));
+    const cases = data
+      .map((item) => {
+        const record = this.normalizeCaseRecord(item);
+        return {
+          ...record,
+          caseId: record.caseId || "",
+          companyName: record.companyName || "",
+          workAddress: record.workAddress || "",
+          status: record.status || "",
+          createdAt: record.createdAt || "",
+          updatedAt: record.updatedAt || "",
+          submittedAt: record.submittedAt || "",
+          hasUnreadResponse: Boolean(record.hasUnreadResponse),
+          noticeFileName: record.noticeFileName || "",
+          noticeUploadedAt: record.noticeUploadedAt || ""
+        };
+      })
+      .filter((item) => item.status !== CASE_STATUS.deleted && !item.deletedAt);
+    return { ok: true, cases };
   },
   generateCaseId(companyName, cases) {
     const prefix = String(companyName || "CASE").replace(/[^\w\u4e00-\u9fff]/g, "").slice(0, 4).toUpperCase() || "CASE";
@@ -634,7 +663,7 @@ const caseService = {
   },
   async listCases() {
     if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.normalizeCaseList(await remoteClient.request("listCases"));
-    return localStore.readCases().filter((item) => item.status !== CASE_STATUS.deleted && !item.deletedAt).sort((a, b) => {
+    const cases = localStore.readCases().filter((item) => item.status !== CASE_STATUS.deleted && !item.deletedAt).sort((a, b) => {
       const rank = (item) => {
         if (item.hasUnreadResponse) return 0;
         if (helpers.latestSubmission(item) && !item.noticeFileUrl) return 1;
@@ -645,13 +674,14 @@ const caseService = {
       if (rankDiff) return rankDiff;
       return String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt));
     });
+    return { ok: true, cases };
   },
   async deleteCase(caseId) {
     if (CONFIG.ACTIVE_STORAGE_MODE === "remote") {
       const runDelete = () => remoteClient.request("deleteCase", { caseId });
       const verifyDeleted = async () => {
-        const cases = await this.listCases();
-        return !cases.some((item) => item.caseId === caseId);
+        const result = await this.listCases();
+        return !result.cases.some((item) => item.caseId === caseId);
       };
       try {
         return this.normalizeCaseRecord(await runDelete());
