@@ -229,6 +229,19 @@ const helpers = {
     const extension = String(data.extension || "").trim();
     if (!phone) return "＿＿＿＿＿＿";
     return extension ? `${phone} 分機 ${extension}` : phone;
+  },
+  creationToken(record = {}) {
+    return record.token
+      || record.formAccessToken
+      || record.formToken
+      || record.fillToken
+      || record.publicToken
+      || record.accessToken
+      || record.case?.token
+      || record.case?.formAccessToken
+      || record.case?.formToken
+      || record.case?.fillToken
+      || "";
   }
 };
 
@@ -594,19 +607,16 @@ const noticeFileStore = {
 
 const caseService = {
   async createCase(input) {
-    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") {
-      const record = this.normalizeCaseRecord(await remoteClient.request("createCase", input));
-      if (!record.caseId || !record.formAccessToken) throw new Error("建立案件回傳資料不完整，缺少案件編號或填寫 token。");
-      return {
-        ...input,
-        ...record,
-        status: record.status || CASE_STATUS.pending
-      };
-    }
+    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.createCaseRemote(input);
     const now = new Date().toISOString();
     const cases = localStore.readCases();
+    if (input.requestId) {
+      const existing = cases.find((item) => item.requestId === input.requestId);
+      if (existing) return this.normalizeCreateCaseResult(existing, input);
+    }
     const caseRecord = {
       caseId: this.generateCaseId(input.companyName, cases),
+      requestId: input.requestId || "",
       status: CASE_STATUS.pending,
       createdAt: now,
       updatedAt: now,
@@ -631,6 +641,7 @@ const caseService = {
       responseViewedAt: null,
       pdfFileName: "",
       pdfUrl: "",
+      formAccessToken: this.generateAccessToken(),
       noticeAccessToken: this.generateAccessToken(),
       noticeFileId: "",
       noticeFileName: "",
@@ -650,7 +661,79 @@ const caseService = {
     };
     cases.push(caseRecord);
     localStore.writeCases(cases);
-    return caseRecord;
+    return this.normalizeCreateCaseResult({ ...input, ...caseRecord });
+  },
+  async createCaseRemote(input) {
+    const requestId = input.requestId || "";
+    try {
+      const raw = await remoteClient.request("createCase", input);
+      return this.normalizeCreateCaseResult(raw, input);
+    } catch (error) {
+      const recovered = requestId ? await this.findCreatedCaseByRequestId(requestId).catch((lookupError) => {
+        console.warn("建立案件回傳不完整後，requestId 查詢建立結果失敗", { requestId, lookupError });
+        return null;
+      }) : null;
+      if (recovered) return this.normalizeCreateCaseResult(recovered, input);
+      if (error?.code === "INCOMPLETE_CREATE_RESPONSE") {
+        return {
+          ok: false,
+          code: "CREATE_RESULT_UNCONFIRMED",
+          message: "建立結果尚未確認，請先重新載入案件列表，勿重複送出。"
+        };
+      }
+      return {
+        ok: false,
+        code: error?.code || "API_ERROR",
+        message: error?.message || "建立案件失敗，請稍後再試。"
+      };
+    }
+  },
+  normalizeCreateCaseResult(raw, input = {}) {
+    const candidates = [
+      raw?.case,
+      raw?.data?.case,
+      raw?.result?.case,
+      raw?.record,
+      raw?.data,
+      raw?.result,
+      raw
+    ].filter((value) => value && typeof value === "object" && !Array.isArray(value));
+    const source = candidates.find((value) => value.caseId || value.id || value.caseID || helpers.creationToken(value)) || candidates[0] || {};
+    const record = this.normalizeCaseRecord({
+      ...input,
+      ...source,
+      caseId: source.caseId || source.caseID || source.id || raw?.caseId || raw?.caseID || raw?.id || input.caseId || "",
+      formAccessToken: helpers.creationToken(source) || helpers.creationToken(raw) || input.formAccessToken || ""
+    });
+    const token = helpers.creationToken(record);
+    if (!record.caseId || !token) {
+      console.error("建立案件回傳資料不完整", {
+        raw,
+        normalized: record,
+        caseId: record.caseId || "",
+        tokenPresent: Boolean(token)
+      });
+      throw serviceError("INCOMPLETE_CREATE_RESPONSE", "建立案件回傳資料不完整，缺少案件編號或填寫 token。", { raw, normalized: record });
+    }
+    const normalizedCase = {
+      ...record,
+      formAccessToken: token,
+      token,
+      status: record.status || CASE_STATUS.pending
+    };
+    return {
+      ok: true,
+      caseId: normalizedCase.caseId,
+      token,
+      formUrl: helpers.formUrl(normalizedCase),
+      case: normalizedCase
+    };
+  },
+  async findCreatedCaseByRequestId(requestId) {
+    if (!requestId) return null;
+    const result = await this.listCases();
+    const cases = Array.isArray(result.cases) ? result.cases : [];
+    return cases.find((item) => item.requestId === requestId) || null;
   },
   normalizeCaseRecord(record = {}) {
     let data = record || {};
@@ -691,7 +774,8 @@ const caseService = {
     const workEndTime = data.workEndTime || response.workEndTime || response.standardTime?.end || "17:00";
     return {
       ...data,
-      caseId: data.caseId || data.id || "",
+      caseId: data.caseId || data.caseID || data.id || "",
+      requestId: data.requestId || "",
       companyName: data.companyName || "",
       workAddress: data.workAddress || data.workLocation || "",
       workLocation: data.workLocation || data.workAddress || "",
@@ -711,7 +795,7 @@ const caseService = {
       status: data.status || "",
       response,
       submissions,
-      formAccessToken: data.formAccessToken || data.token || data.formToken || "",
+      formAccessToken: data.formAccessToken || data.token || data.formToken || data.fillToken || "",
       noticeAccessToken: data.noticeAccessToken || data.noticeToken || ""
     };
   },

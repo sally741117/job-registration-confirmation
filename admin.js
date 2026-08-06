@@ -132,10 +132,11 @@ function renderModeBanner() {
   useLocalModeBtn.classList.toggle("hidden", CONFIG.ACTIVE_STORAGE_MODE === "local");
 }
 
-function renderCreated(caseRecord) {
-  const url = helpers.formUrl(caseRecord);
+function renderCreated(result) {
+  const caseRecord = result.case || {};
+  const url = result.formUrl || helpers.formUrl(caseRecord);
   createdInfo.innerHTML = `
-    <div><strong>案件編號</strong><span>${caseRecord.caseId}</span></div>
+    <div><strong>案件編號</strong><span>${result.caseId}</span></div>
     <div><strong>公司名稱</strong><span>${caseRecord.companyName}</span></div>
     <div><strong>公司填寫連結</strong><span class="breakable">${url}</span></div>
     <div><strong>目前狀態</strong><span>${helpers.statusLabel(caseRecord.status)}</span></div>
@@ -285,13 +286,18 @@ caseForm.addEventListener("submit", async (event) => {
   setCreateBusy(true);
   setFormStatus("正在建立案件，請稍候。", "loading");
   try {
-    createdCase = await withTimeout(
+    const createResult = await withTimeout(
       caseService.createCase({ ...input, requestId: createRequestId }),
       70000,
       "線上服務回應逾時，請重新整理案件列表確認是否已建立。"
     );
-    highlightedCaseId = createdCase.caseId || "";
-    renderCreated(createdCase);
+    if (!createResult?.ok) {
+      setFormStatus(createResult?.message || "建立結果尚未確認，請先重新載入案件列表，勿重複送出。", "warning");
+      return;
+    }
+    createdCase = createResult;
+    highlightedCaseId = createResult.caseId || "";
+    renderCreated(createResult);
     setFormStatus("案件建立成功。", "success");
     createRequestId = "";
     setCreateBusy(false);
@@ -319,7 +325,7 @@ caseForm.addEventListener("submit", async (event) => {
 
 copyCreatedLink.addEventListener("click", async () => {
   if (!createdCase) return;
-  await copyText(helpers.formUrl(createdCase));
+  await copyText(createdCase.formUrl);
 });
 
 resetFormBtn.addEventListener("click", () => {

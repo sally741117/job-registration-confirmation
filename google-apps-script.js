@@ -55,14 +55,24 @@ function adminLogin_(payload) {
 function createCase_(record) {
   const sheet = getSheet_();
   ensureHeaders_(sheet);
+  if (record.requestId) {
+    const existing = findCaseByRequestId_(record.requestId);
+    if (existing) return existing;
+  }
   sheet.appendRow(headers_().map((key) => stringify_(record[key])));
-  return record;
+  SpreadsheetApp.flush();
+  const saved = record.requestId ? findCaseByRequestId_(record.requestId) : getCase_(record.caseId);
+  if (!saved || !saved.caseId || !saved.formAccessToken || (record.requestId && saved.requestId !== record.requestId)) {
+    throw codedError_("INCOMPLETE_CREATE_RESPONSE", "建立案件已寫入但回傳資料不完整。");
+  }
+  return saved;
 }
 
 function normalizeNewCase_(input) {
   const now = new Date().toISOString();
   return {
     caseId: input.caseId || generateCaseId_(input.companyName),
+    requestId: input.requestId || "",
     status: CASE_STATUS.pending,
     createdAt: now,
     updatedAt: now,
@@ -113,6 +123,18 @@ function getCase_(caseId) {
   const values = sheet.getDataRange().getValues();
   const headers = values.shift();
   const row = values.find((item) => item[headers.indexOf("caseId")] === caseId);
+  return row ? rowToObject_(headers, row) : null;
+}
+
+function findCaseByRequestId_(requestId) {
+  if (!requestId) return null;
+  const sheet = getSheet_();
+  ensureHeaders_(sheet);
+  const values = sheet.getDataRange().getValues();
+  const headers = values.shift();
+  const requestIdIndex = headers.indexOf("requestId");
+  if (requestIdIndex < 0) return null;
+  const row = values.find((item) => item[requestIdIndex] === requestId);
   return row ? rowToObject_(headers, row) : null;
 }
 
@@ -461,6 +483,7 @@ function ensureHeaders_(sheet) {
 function headers_() {
   return [
     "caseId",
+    "requestId",
     "status",
     "createdAt",
     "updatedAt",
@@ -518,6 +541,7 @@ function rowToObject_(headers, row) {
 function normalizeOutput_(record) {
   return {
     ...record,
+    requestId: record.requestId || "",
     formAccessToken: record.formAccessToken || "",
     noticeAccessToken: record.noticeAccessToken || generateAccessToken_(),
     recruitmentCount: record.recruitmentCount === "" || record.recruitmentCount === null || record.recruitmentCount === undefined ? null : Number(record.recruitmentCount),
