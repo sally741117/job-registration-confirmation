@@ -753,6 +753,43 @@ a.secondary {
   background: #fff;
 }
 
+.notice-text-preview {
+  display: grid;
+  gap: 14px;
+}
+
+.notice-text-preview dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.notice-text-preview dl > div {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #fff;
+}
+
+.notice-text-preview dt {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.notice-text-preview dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.notice-text-preview ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 1.2em;
+}
+
 .disabled {
   pointer-events: none;
   opacity: .45;

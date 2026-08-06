@@ -287,9 +287,9 @@ function syncVisibility() {
   updateSummary();
 }
 
-function renderVisibleErrorState(message = "目前無法載入案件資料，請稍後重試或聯絡承辦人員。") {
+function renderVisibleErrorState(message = "目前無法載入案件資料，請稍後重試或聯絡承辦人員。", title = "案件資料載入失敗") {
   finishLoadingState();
-  if (missingTitle) missingTitle.textContent = "案件資料載入失敗";
+  if (missingTitle) missingTitle.textContent = title;
   if (missingText) {
     missingText.innerHTML = "";
     const text = document.createElement("span");
@@ -305,6 +305,19 @@ function renderVisibleErrorState(message = "目前無法載入案件資料，請
   setVisible(completedView, false);
   setVisible(successView, false);
   setVisible(missingView, true);
+}
+
+function renderFormLoadError(result) {
+  const titles = {
+    MISSING_PARAMETERS: "連結不完整",
+    CASE_NOT_FOUND: "找不到案件",
+    INVALID_TOKEN: "連結已失效或驗證失敗",
+    CASE_DELETED: "案件已刪除",
+    INVALID_RESPONSE: "案件資料格式錯誤",
+    NETWORK_ERROR: "案件資料載入失敗",
+    API_ERROR: "案件資料載入失敗"
+  };
+  renderVisibleErrorState(result.message, titles[result.code] || "案件資料載入失敗");
 }
 
 continueWaitBtn?.addEventListener("click", () => {
@@ -343,24 +356,29 @@ form.addEventListener("submit", async (event) => {
 async function boot() {
   startLoadingState();
   const search = new URLSearchParams(window.location.search);
-  const caseId = helpers.getCaseIdFromUrl();
+  const caseId = search.get("caseId") || "";
   const token = search.get("token") || "";
   if (!caseId || (CONFIG.ACTIVE_STORAGE_MODE === "remote" && !token)) {
-    finishLoadingState();
-    missingTitle.textContent = "缺少案件編號";
-    missingText.textContent = "請確認填寫連結是否完整，網址需包含 caseId。";
-    setVisible(missingView, true);
+    renderFormLoadError({
+      ok: false,
+      code: "MISSING_PARAMETERS",
+      message: "連結不完整，請確認網址包含案件編號與驗證 token。"
+    });
     return;
   }
-  currentCase = CONFIG.ACTIVE_STORAGE_MODE === "remote"
-    ? await caseService.getPublicFormCase(caseId, token)
-    : await caseService.getCase(caseId);
+  const loadResult = await caseService.loadPublicFormCase(caseId, token);
+  if (!loadResult.ok) {
+    renderFormLoadError(loadResult);
+    return;
+  }
+  currentCase = loadResult.case;
   if (CONFIG.ACTIVE_STORAGE_MODE === "remote" && currentCase) currentCase.formAccessToken = token;
   if (!currentCase) {
-    finishLoadingState();
-    missingTitle.textContent = "案件不存在";
-    missingText.textContent = "查無此案件，請聯絡承辦仲介人員確認連結。";
-    setVisible(missingView, true);
+    renderFormLoadError({
+      ok: false,
+      code: "CASE_NOT_FOUND",
+      message: "找不到案件，案件可能已刪除或連結錯誤。"
+    });
     return;
   }
   if ([CASE_STATUS.submitted, CASE_STATUS.preparing_notice, CASE_STATUS.notice_ready].includes(currentCase.status)) {
@@ -382,5 +400,5 @@ async function boot() {
 
 boot().catch((error) => {
   console.error("Form initialization failed:", error);
-  renderVisibleErrorState();
+  renderFormLoadError(caseService.publicFormErrorResult(error));
 });

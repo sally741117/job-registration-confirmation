@@ -20,6 +20,7 @@ function resolveStorageMode() {
   const forced = URL_PARAMS.get("storage");
   if (forced === "local") return "local";
   if (forced === "remote" && isValidAppsScriptUrl(CONFIG.GOOGLE_APPS_SCRIPT_URL)) return "remote";
+  if (typeof window !== "undefined" && /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)) return "local";
   if (CONFIG.STORAGE_MODE === "remote" && isValidAppsScriptUrl(CONFIG.GOOGLE_APPS_SCRIPT_URL)) return "remote";
   if (CONFIG.STORAGE_MODE === "auto") return isValidAppsScriptUrl(CONFIG.GOOGLE_APPS_SCRIPT_URL) ? "remote" : "local";
   return "local";
@@ -46,6 +47,13 @@ const NOTICE_FILE_DB = {
   storeName: "files"
 };
 
+function serviceError(code, message, details = {}) {
+  const error = new Error(message);
+  error.code = code || "API_ERROR";
+  Object.assign(error, details);
+  return error;
+}
+
 const helpers = {
   pad(value) {
     return String(value).padStart(2, "0");
@@ -65,7 +73,50 @@ const helpers = {
     return new Date(value).toLocaleString("zh-TW", { hour12: false });
   },
   displayTime(value) {
-    return value ? value.replace(":", "：") : "";
+    return this.formatTime(value);
+  },
+  formatTaiwanDate(value) {
+    if (value === undefined || value === null || value === "") return "";
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return new Intl.DateTimeFormat("zh-TW", {
+        timeZone: "Asia/Taipei",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+      }).format(value);
+    }
+    const raw = String(value).trim().replace(/^"+|"+$/g, "");
+    if (!raw || raw === "Invalid Date") return "";
+    const dateOnly = raw.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+    if (dateOnly && !/[T:]/.test(raw.replace(dateOnly[0], ""))) {
+      return `${dateOnly[1]}/${this.pad(dateOnly[2])}/${this.pad(dateOnly[3])}`;
+    }
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) {
+      console.warn("日期欄位格式無法解析", { value });
+      return "";
+    }
+    return new Intl.DateTimeFormat("zh-TW", {
+      timeZone: "Asia/Taipei",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).format(parsed);
+  },
+  formatTime(value) {
+    const raw = String(value || "").trim().replace(/^"+|"+$/g, "");
+    if (!raw) return "";
+    const match = raw.match(/(\d{1,2}):(\d{2})/);
+    if (match) return `${this.pad(match[1])}:${match[2]}`;
+    const digits = raw.match(/^(\d{1,2})(\d{2})$/);
+    if (digits) return `${this.pad(digits[1])}:${digits[2]}`;
+    console.warn("時間欄位格式無法解析", { value });
+    return "";
+  },
+  formatWorkTime(start, end) {
+    const normalizedStart = this.formatTime(start);
+    const normalizedEnd = this.formatTime(end);
+    return normalizedStart && normalizedEnd ? `${normalizedStart}～${normalizedEnd}` : "";
   },
   formatMoney(value) {
     return Number(value || 0).toLocaleString("zh-TW");
@@ -95,6 +146,9 @@ const helpers = {
     return new URLSearchParams(window.location.search).get("caseId") || "";
   },
   publicBaseUrl() {
+    if (CONFIG.ACTIVE_STORAGE_MODE === "local" && typeof window !== "undefined") {
+      return String(window.location.origin + window.location.pathname.replace(/\/[^/]*$/, "")).replace(/\/$/, "");
+    }
     return String(CONFIG.PUBLIC_APP_BASE_URL || window.location.origin + window.location.pathname.replace(/\/[^/]*$/, "")).replace(/\/$/, "");
   },
   isValidPublicValue(value) {
@@ -168,10 +222,7 @@ const helpers = {
     return `${size} B`;
   },
   displayDateSlash(value) {
-    if (!value) return "";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return String(value).replace(/-/g, "/");
-    return `${date.getFullYear()}/${this.pad(date.getMonth() + 1)}/${this.pad(date.getDate())}`;
+    return this.formatTaiwanDate(value);
   },
   contactPhoneText(data = {}) {
     const phone = String(data.contactPhone || "").trim();
@@ -395,8 +446,8 @@ const remoteClient = {
         signal: controller.signal
       });
     } catch (error) {
-      if (error.name === "AbortError") throw new Error("線上服務回應逾時，請稍後重試。");
-      throw error;
+      if (error.name === "AbortError") throw serviceError("NETWORK_ERROR", "線上服務回應逾時，請稍後重試。", { cause: error });
+      throw serviceError("NETWORK_ERROR", error.message || "無法連線到線上服務。", { cause: error });
     } finally {
       window.clearTimeout(timer);
     }
@@ -411,7 +462,11 @@ const remoteClient = {
         contentType: response.headers.get("content-type") || "",
         preview: text.slice(0, 200)
       });
-      throw new Error("線上服務暫時無法回應，請稍後再試。");
+      throw serviceError("INVALID_RESPONSE", "線上服務回傳格式錯誤，請稍後再試。", {
+        httpStatus: response.status,
+        contentType: response.headers.get("content-type") || "",
+        preview: text.slice(0, 200)
+      });
     }
     const authCode = result?.code || result?.error?.code || "";
     const authMessage = String(result?.error?.message || result?.error || result?.message || "");
@@ -422,7 +477,14 @@ const remoteClient = {
       this.clearAdminSession();
       if (!options.retried) return this.request(action, payload, { retried: true });
     }
-    if (!result?.ok) throw new Error(result?.error?.message || result?.error || "線上服務暫時無法使用。");
+    if (!result?.ok) {
+      const apiCode = result?.code || result?.error?.code || "API_ERROR";
+      const apiMessage = result?.error?.message || result?.error || result?.message || "線上服務暫時無法使用。";
+      throw serviceError(apiCode, apiMessage, { httpStatus: response.status, raw: result });
+    }
+    if (!["healthCheck", "ping"].includes(action) && result?.result?.service === "job-registration-backend") {
+      throw serviceError("INVALID_RESPONSE", "線上服務回傳了非預期的健康檢查資料，請稍後重試。", { httpStatus: response.status, raw: result });
+    }
     return result.result ?? result.data ?? result;
   },
   async testConnection() {
@@ -591,15 +653,64 @@ const caseService = {
     return caseRecord;
   },
   normalizeCaseRecord(record = {}) {
-    let data = record;
+    let data = record || {};
     for (let i = 0; i < 4; i += 1) {
       const next = data?.data || data?.result || data?.case || data?.record || data?.item;
       if (!next || next === data) break;
       data = next;
     }
+    const parseObject = (value, fieldName) => {
+      if (!value) return {};
+      if (typeof value === "object") return value;
+      try {
+        return JSON.parse(value);
+      } catch (error) {
+        console.warn(`${fieldName} 欄位不是有效 JSON，已使用空物件替代。`, { fieldName, value, error });
+        return {};
+      }
+    };
+    const parseArray = (value, fieldName) => {
+      if (!value) return [];
+      if (Array.isArray(value)) return value;
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (error) {
+        console.warn(`${fieldName} 欄位不是有效 JSON 陣列，已使用空陣列替代。`, { fieldName, value, error });
+        return [];
+      }
+    };
+    const response = parseObject(data.response || data.responseJson, "responseJson");
+    const submissions = parseArray(data.submissions || data.submissionsJson, "submissionsJson").map((submission) => ({
+      ...submission,
+      response: parseObject(submission.response || submission.responseJson, "submission.responseJson"),
+      responseJson: parseObject(submission.responseJson || submission.response, "submission.responseJson")
+    }));
+    const noticeContent = parseObject(data.noticeContent || data.noticeContentJson || response.noticeContent, "noticeContent");
+    const workStartTime = data.workStartTime || response.workStartTime || response.standardTime?.start || "08:00";
+    const workEndTime = data.workEndTime || response.workEndTime || response.standardTime?.end || "17:00";
     return {
       ...data,
       caseId: data.caseId || data.id || "",
+      companyName: data.companyName || "",
+      workAddress: data.workAddress || data.workLocation || "",
+      workLocation: data.workLocation || data.workAddress || "",
+      contactName: data.contactName || "",
+      contactPhone: data.contactPhone || "",
+      extension: data.extension || "",
+      recruitmentDate: helpers.formatTaiwanDate(data.recruitmentDate || response.recruitmentDate),
+      industry: data.industry || response.industry || "",
+      salaryMin: data.salaryMin || "",
+      salaryMax: data.salaryMax || "",
+      publicPhone: data.publicPhone || response.publicPhone || "",
+      workStartTime: helpers.formatTime(workStartTime),
+      workEndTime: helpers.formatTime(workEndTime),
+      contractor: data.contractor || data.agencyCompany || "",
+      agencyCompany: data.agencyCompany || data.contractor || "",
+      noticeContent,
+      status: data.status || "",
+      response,
+      submissions,
       formAccessToken: data.formAccessToken || data.token || data.formToken || "",
       noticeAccessToken: data.noticeAccessToken || data.noticeToken || ""
     };
@@ -657,6 +768,40 @@ const caseService = {
       .filter((item) => item.status !== CASE_STATUS.deleted && !item.deletedAt);
     return { ok: true, cases };
   },
+  normalizePublicFormCaseResult(result) {
+    const candidates = [
+      result?.case,
+      result?.data?.case,
+      result?.result?.case,
+      result?.data,
+      result?.result,
+      result
+    ];
+    const data = candidates.find((value) => value && typeof value === "object" && !Array.isArray(value));
+    if (!data) throw serviceError("INVALID_RESPONSE", "公開案件資料回傳格式錯誤。", { raw: result });
+    const record = this.normalizeCaseRecord(data);
+    if (!record.caseId || (!record.companyName && !record.workAddress)) {
+      throw serviceError("INVALID_RESPONSE", "公開案件資料缺少必要欄位。", { raw: result });
+    }
+    return { ok: true, case: record };
+  },
+  publicFormErrorResult(error) {
+    const code = error?.code || "API_ERROR";
+    const messages = {
+      MISSING_PARAMETERS: "連結不完整，請確認網址包含案件編號與驗證 token。",
+      CASE_NOT_FOUND: "找不到案件，案件可能已刪除或連結錯誤。",
+      INVALID_TOKEN: "連結已失效或驗證失敗。",
+      CASE_DELETED: "此案件已刪除，請聯絡承辦人員。",
+      INVALID_RESPONSE: "案件資料回傳格式錯誤，請稍後重試或聯絡承辦人員。",
+      NETWORK_ERROR: "案件資料載入失敗，請稍後重試。"
+    };
+    return {
+      ok: false,
+      code: messages[code] ? code : "API_ERROR",
+      message: messages[code] || error?.message || "案件資料載入失敗，請稍後重試或聯絡承辦人員。",
+      rawMessage: error?.message || String(error || "")
+    };
+  },
   generateCaseId(companyName, cases) {
     const prefix = String(companyName || "CASE").replace(/[^\w\u4e00-\u9fff]/g, "").slice(0, 4).toUpperCase() || "CASE";
     const date = helpers.todayStamp();
@@ -674,11 +819,31 @@ const caseService = {
   },
   async getPublicFormCase(caseId, token) {
     if (CONFIG.ACTIVE_STORAGE_MODE === "remote") {
-      const record = this.normalizeCaseRecord(await remoteClient.request("getPublicFormCase", { caseId, token }));
-      if (!record.companyName && !record.workAddress) throw new Error("案件資料回傳格式錯誤。");
-      return record;
+      const result = await this.loadPublicFormCase(caseId, token);
+      if (!result.ok) throw serviceError(result.code, result.message, { rawMessage: result.rawMessage });
+      return result.case;
     }
     return this.getCase(caseId);
+  },
+  async loadPublicFormCase(caseId, token) {
+    if (!helpers.isValidPublicValue(caseId) || (CONFIG.ACTIVE_STORAGE_MODE === "remote" && !helpers.isValidPublicValue(token))) {
+      return { ok: false, code: "MISSING_PARAMETERS", message: "連結不完整，請確認網址包含案件編號與驗證 token。" };
+    }
+    const delays = [0, 500, 1000, 2000];
+    let lastResult = null;
+    for (let index = 0; index < delays.length; index += 1) {
+      if (delays[index]) await new Promise((resolve) => window.setTimeout(resolve, delays[index]));
+      try {
+        const raw = CONFIG.ACTIVE_STORAGE_MODE === "remote"
+          ? await remoteClient.request("getPublicFormCase", { caseId, token }, { timeoutMs: 25000 })
+          : await this.getCase(caseId);
+        return this.normalizePublicFormCaseResult(raw);
+      } catch (error) {
+        lastResult = this.publicFormErrorResult(error);
+        if (!["CASE_NOT_FOUND", "NETWORK_ERROR", "INVALID_RESPONSE"].includes(lastResult.code)) return lastResult;
+      }
+    }
+    return lastResult || { ok: false, code: "API_ERROR", message: "案件資料載入失敗，請稍後重試或聯絡承辦人員。" };
   },
   async listCases() {
     if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.normalizeCaseList(await remoteClient.request("listCases", {}, { timeoutMs: 25000 }));
@@ -959,41 +1124,28 @@ const noticeService = {
       if (!next || next === data) break;
       data = next;
     }
-    if (data.caseData && data.noticeFile) {
-      return {
-        ok: true,
-        caseData: data.caseData,
-        noticeFile: data.noticeFile,
-        latestSubmission: data.latestSubmission || null
-      };
-    }
-    const caseSource = data.case || data.record || data;
+    const caseSource = caseService.normalizeCaseRecord(data.caseData || data.case || data.record || data);
     const fileSource = data.noticeFile || {};
     const latestSubmission = data.latestSubmission || helpers.latestSubmission(caseSource) || null;
+    const latestResponse = latestSubmission?.response || latestSubmission?.responseJson || caseSource.response || {};
+    const mergedCase = caseService.normalizeCaseRecord({
+      ...caseSource,
+      ...latestResponse,
+      response: latestResponse,
+      latestSubmissionId: latestSubmission?.submissionId || caseSource.latestSubmissionId || ""
+    });
+    const noticeFile = {
+      fileName: fileSource.fileName || caseSource.noticeFileName || "",
+      fileType: fileSource.fileType || caseSource.noticeFileType || "",
+      fileSize: Number(fileSource.fileSize || caseSource.noticeFileSize || 0),
+      previewUrl: fileSource.previewUrl || fileSource.fileUrl || caseSource.noticeFileUrl || "",
+      downloadUrl: fileSource.downloadUrl || fileSource.fileUrl || caseSource.noticeFileUrl || ""
+    };
     return {
       ok: true,
-      caseData: {
-        caseId: caseSource.caseId || "",
-        status: caseSource.status || "",
-        companyName: caseSource.companyName || "",
-        workAddress: caseSource.workAddress || "",
-        contactName: caseSource.contactName || "",
-        contactPhone: caseSource.contactPhone || "",
-        extension: caseSource.extension || "",
-        recruitmentDate: caseSource.recruitmentDate || "",
-        industry: caseSource.industry || "",
-        recruitmentCount: helpers.hasRecruitmentCount(caseSource) ? Number(caseSource.recruitmentCount) : null,
-        publicPhone: caseSource.publicPhone || "",
-        agencyCompany: caseSource.agencyCompany || "",
-        latestSubmissionId: latestSubmission?.submissionId || caseSource.latestSubmissionId || ""
-      },
-      noticeFile: {
-        fileName: fileSource.fileName || caseSource.noticeFileName || "",
-        fileType: fileSource.fileType || caseSource.noticeFileType || "",
-        fileSize: Number(fileSource.fileSize || caseSource.noticeFileSize || 0),
-        previewUrl: fileSource.previewUrl || fileSource.fileUrl || caseSource.noticeFileUrl || "",
-        downloadUrl: fileSource.downloadUrl || fileSource.fileUrl || caseSource.noticeFileUrl || ""
-      },
+      case: mergedCase,
+      caseData: mergedCase,
+      noticeFile,
       latestSubmission
     };
   },
@@ -1027,6 +1179,7 @@ const noticeService = {
     const latest = result.latestSubmission || {};
     const response = latest.response || latest.responseJson || {};
     return {
+      ...result.case,
       ...result.caseData,
       ...response,
       response,
@@ -1135,10 +1288,11 @@ const pdfService = {
   workTimeText(data) {
     const lines = [];
     const hasShift = ["有輪班制度", "同時有輪班及部分工時"].includes(data.shiftType);
-    const standardTime = data.standardTime || { start: "08:00", end: "17:00", label: "08：00～17：00" };
-    if (!hasShift || !data.shifts?.length) lines.push(`固定日班 ${standardTime.label}`);
-    (data.shifts || []).filter((shift) => shift.start && shift.end).forEach((shift) => lines.push(`${shift.name} ${helpers.displayTime(shift.start)}～${helpers.displayTime(shift.end)}`));
-    (data.partTimes || []).filter((time) => time.start && time.end).forEach((time, index) => lines.push(`部分工時${index + 1} ${helpers.displayTime(time.start)}～${helpers.displayTime(time.end)}`));
+    const standardTime = data.standardTime || { start: data.workStartTime || "08:00", end: data.workEndTime || "17:00" };
+    const standardLabel = helpers.formatWorkTime(standardTime.start, standardTime.end) || helpers.formatWorkTime(data.workStartTime || "08:00", data.workEndTime || "17:00");
+    if (!hasShift || !data.shifts?.length) lines.push(`固定日班 ${standardLabel}`);
+    (data.shifts || []).filter((shift) => shift.start && shift.end).forEach((shift) => lines.push(`${shift.name} ${helpers.formatWorkTime(shift.start, shift.end)}`));
+    (data.partTimes || []).filter((time) => time.start && time.end).forEach((time, index) => lines.push(`部分工時${index + 1} ${helpers.formatWorkTime(time.start, time.end)}`));
     return lines.join("；");
   },
   leaveText(data) {
@@ -1158,13 +1312,14 @@ const pdfService = {
     const rows = [];
     const completeShifts = (data.shifts || []).filter((shift) => shift.start && shift.end);
     if (completeShifts.length) {
-      completeShifts.slice(0, 3).forEach((shift) => rows.push(`${shift.name}工作時間：${helpers.displayTime(shift.start)}～${helpers.displayTime(shift.end)}嗎：是。`));
+      completeShifts.slice(0, 3).forEach((shift) => rows.push(`${shift.name}工作時間為 ${helpers.formatWorkTime(shift.start, shift.end)}：是。`));
       if (data.rotationMethod) rows.push(`輪班方式是${data.rotationMethod}嗎：是。`);
-    } else if (data.standardTime?.label || (data.standardTime?.start && data.standardTime?.end)) {
-      rows.push(`工作時間：${data.standardTime?.label || `${helpers.displayTime(data.standardTime.start)}～${helpers.displayTime(data.standardTime.end)}`}嗎：是。`);
+    } else {
+      const standardLabel = helpers.formatWorkTime(data.standardTime?.start || data.workStartTime || "08:00", data.standardTime?.end || data.workEndTime || "17:00");
+      if (standardLabel) rows.push(`工作時間為 ${standardLabel}：是。`);
     }
     (data.partTimes || []).filter((time) => time.start && time.end).forEach((time, index) => {
-      rows.push(`部分工時第${index + 1}時段：${helpers.displayTime(time.start)}～${helpers.displayTime(time.end)}嗎：是。`);
+      rows.push(`部分工時第${index + 1}時段為 ${helpers.formatWorkTime(time.start, time.end)}：是。`);
     });
     return rows;
   },
@@ -1177,14 +1332,14 @@ const pdfService = {
     const rows = [
       `產業類別：${data.industry || "＿＿＿＿"}。`,
       `是否有委託「${data.agencyCompany || "承辦仲介公司"}」辦理求才：是。`,
-      `求才工作地點在哪：${data.workAddress || "＿＿＿＿"}。`,
+      `求才工作地點：${data.workAddress || data.workLocation || "＿＿＿＿"}。`,
       `（貴司員工的工作地址，請與承辦人員核對；若承辦人員說明正確，請回答「是」。）`
     ];
     if (helpers.hasRecruitmentCount(data)) rows.push(`本次求才人數是${data.recruitmentCount}人嗎：是。`);
     const leaveQuestion = this.leaveQuestion(data);
     if (leaveQuestion) rows.push(leaveQuestion);
     rows.push(...this.workTimeQuestions(data));
-    rows.push(data.publicPhone ? `公開求才電話為${data.publicPhone}，這支電話會公布在台灣就業通網站，若有人來求才請不要拒絕：好。` : "這支電話會公布在台灣就業通網站，若有人來求才請不要拒絕：好。");
+    rows.push(data.publicPhone ? `公開求才電話為 ${data.publicPhone}，此電話將公布於台灣就業通網站；若有求職者聯繫，請勿直接拒絕：好。` : "公開求才電話將公布於台灣就業通網站；若有求職者聯繫，請勿直接拒絕：好。");
     return rows;
   },
   build(data, target) {
@@ -1271,19 +1426,15 @@ const pdfService = {
       { text: "求才通知單", size: 20, align: "center", bold: true, gap: 5 },
       { type: "rule", gap: 10 },
       { type: "meta", size: 11, rows: [
-        [
-          { label: "雇主：", value: data.companyName || "" },
-          { label: "聯絡人：", value: data.contactName || "" }
-        ],
-        [
-          { label: "聯絡電話：", value: helpers.contactPhoneText(data) },
-          { label: "求才時間：", value: helpers.displayDateSlash(data.recruitmentDate) }
-        ]
+        [{ label: "雇主：", value: data.companyName || "" }],
+        [{ label: "聯絡人：", value: data.contactName || "" }],
+        [{ label: "聯絡電話：", value: helpers.contactPhoneText(data) }],
+        [{ label: "求才時間：", value: helpers.formatTaiwanDate(data.recruitmentDate) }]
       ], gap: 10 },
       { text: "為辦理申請外籍移工程序，本公司將會安排人員至「就業中心」求才登記，屆時會有就業中心承辦人員和您確認是否有委託仲介公司辦理求才登記及確認求才條件，故要麻煩您依照我們發給您的求才內容作核對，請幫我們回答承辦人員問題即可。", size: 11 },
       { text: "以下求才條件皆為制式，若有需異動或其他問題，再麻煩您告知您的業務做變更，謝謝。", size: 11, gap: 7 },
       { text: "就業中心 Q&A", size: 13, bold: true, gap: 4 },
-      ...this.qAndA(data).map((item) => ({ text: `• ${item}`, size: 10.5, bullet: true })),
+      ...this.qAndA(data).map((item) => ({ text: `• ${item}`, size: 10.5, bullet: true, gap: 4 })),
       { text: "以上問答是大部分就業服務站會詢問的重點，其餘未特別提供的問題，若內容正確，回答「是」即可。", size: 11, gap: 8 },
       { text: "由於求才相關規定，若有就業服務站推薦求職者前往面試，切勿以年齡、性別、學歷、經歷等理由拒絕。", size: 11 },
       { text: "與求職者面談時，面談條件均須與求才條件相符，包括工時、任用薪資、投保薪資及休假。", size: 11 },
@@ -1365,17 +1516,7 @@ const pdfService = {
     return runs;
   },
   drawPdfText(text, x, y, size, options = {}) {
-    const drawAt = (offsetX) => {
-      let cursor = x + offsetX;
-      return this.textRuns(text).map((run) => {
-        const font = run.type === "latin" ? "F2" : "F1";
-        const body = run.type === "latin" ? `(${this.pdfLiteral(run.text)})` : `<${this.utf16Hex(run.text)}>`;
-        const command = `BT /${font} ${size} Tf 1 0 0 1 ${cursor.toFixed(1)} ${y.toFixed(1)} Tm ${body} Tj ET`;
-        cursor += this.estimateTextWidth(run.text, size);
-        return command;
-      }).join("\n");
-    };
-    return drawAt(0);
+    return `BT /F1 ${size} Tf 1 0 0 1 ${x.toFixed(1)} ${y.toFixed(1)} Tm <${this.utf16Hex(text)}> Tj ET`;
   },
   createTextPdfBlob(items) {
     const pageWidth = 595;
@@ -1387,15 +1528,17 @@ const pdfService = {
     const metaColumnWidth = (pageWidth - (marginX * 2) - metaColumnGap) / 2;
     const prepareMetaRows = (item) => {
       const size = item.size || 11;
-      const lineHeight = size + 4;
+      const lineHeight = size * 1.5;
       return (item.rows || []).map((row) => {
+        const columnCount = Math.max(1, row.length);
+        const columnWidth = columnCount === 1 ? pageWidth - (marginX * 2) : metaColumnWidth;
         const fields = row.map((field) => {
           const label = field.label || "";
           const labelWidth = this.estimateTextWidth(label, size) + 2;
-          const valueLines = this.wrapTextByWidth(field.value || "", size, Math.max(44, metaColumnWidth - labelWidth));
+          const valueLines = this.wrapTextByWidth(field.value || "", size, Math.max(44, columnWidth - labelWidth));
           return { ...field, label, labelWidth, valueLines };
         });
-        return { fields, height: Math.max(1, ...fields.map((field) => field.valueLines.length)) * lineHeight };
+        return { fields, columnCount, height: Math.max(1, ...fields.map((field) => field.valueLines.length)) * lineHeight };
       });
     };
     const pages = [[]];
@@ -1419,8 +1562,8 @@ const pdfService = {
       }
       const maxWidth = pageWidth - (marginX * 2) - (item.bullet ? 12 : 0);
       const lines = item.noWrap ? [item.text] : this.wrapTextByWidth(item.text, item.size, maxWidth);
+      const lineHeight = item.size * (item.bullet ? 1.5 : 1.45);
       lines.forEach((line, index) => {
-        const lineHeight = item.size + (item.bullet ? 2.5 : 3.8);
         if (y - lineHeight < bottomY) {
           pages.push([]);
           y = startY;
@@ -1447,7 +1590,7 @@ const pdfService = {
           if (line.type === "rule") return `q 1 w ${marginX} ${line.y.toFixed(1)} m ${pageWidth - marginX} ${line.y.toFixed(1)} l S Q`;
           if (line.type === "meta") {
             const rowPositions = [marginX, marginX + metaColumnWidth + metaColumnGap];
-            const lineHeight = (line.size || 11) + 4;
+            const lineHeight = (line.size || 11) * 1.5;
             let rowTop = line.y;
             return (line.rows || []).map((row, rowIndex) => {
               const rowY = rowTop;

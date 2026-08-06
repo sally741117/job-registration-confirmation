@@ -195,14 +195,6 @@ async function renderCaseList(options = {}) {
   try {
   let cases = [];
   if (!options.silent) caseList.innerHTML = `<p class="empty">案件資料載入中...</p>`;
-  if (
-    CONFIG.ACTIVE_STORAGE_MODE === "remote"
-    && typeof remoteClient !== "undefined"
-    && !remoteClient.isSessionUsable(remoteClient.getAdminSession())
-  ) {
-    renderListError(new Error("請先登入管理員後重新載入案件列表。建立案件時會開啟登入視窗。"));
-    return false;
-  }
   try {
     const result = await caseService.listCases();
     if (!Array.isArray(result.cases)) throw new Error("案件列表回傳格式錯誤。");
@@ -303,18 +295,19 @@ caseForm.addEventListener("submit", async (event) => {
     setFormStatus("案件建立成功。", "success");
     createRequestId = "";
     setCreateBusy(false);
-    let listUpdated = false;
-    try {
-      listUpdated = await renderCaseListWithRetry({ expectedCaseId: highlightedCaseId, force: true });
-    } catch (listError) {
-      console.error("案件已建立，但列表更新失敗", listError);
-      renderListError(listError);
-    }
-    if (!listUpdated) {
-      setFormStatus("案件已建立成功，但案件列表更新失敗，請按重新載入。", "warning");
-    } else {
-      setFormStatus("案件建立成功，案件列表已更新。", "success");
-    }
+    renderCaseListWithRetry({ expectedCaseId: highlightedCaseId, force: true })
+      .then((listUpdated) => {
+        if (!listUpdated) {
+          setFormStatus("案件已建立成功，但案件列表更新失敗，請按重新載入。", "warning");
+        } else {
+          setFormStatus("案件建立成功，案件列表已更新。", "success");
+        }
+      })
+      .catch((listError) => {
+        console.error("案件已建立，但列表更新失敗", listError);
+        renderListError(listError);
+        setFormStatus("案件已建立成功，但案件列表更新失敗，請按重新載入。", "warning");
+      });
   } catch (error) {
     console.error("建立案件失敗", error);
     setFormStatus(`建立案件失敗：${messageOf(error, "請確認 Google Apps Script URL 是否已設定。")}`, "error");
@@ -408,6 +401,13 @@ if (!requestedCaseId) {
   }
 
   try {
+    if (
+      CONFIG.ACTIVE_STORAGE_MODE === "remote"
+      && typeof remoteClient !== "undefined"
+      && !remoteClient.isSessionUsable(remoteClient.getAdminSession())
+    ) {
+      setFormStatus("請先完成管理員登入，後續建立與列表更新會共用同一次登入狀態。", "loading");
+    }
     renderCaseListWithRetry();
   } catch (error) {
     console.error("案件列表初始化失敗", error);

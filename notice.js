@@ -21,8 +21,10 @@ function params() {
   };
 }
 
-function renderError(message) {
+function renderError(message, title = "此通知連結無效或尚未開放") {
   setVisible(loadingView, false);
+  const heading = invalidView.querySelector("h1");
+  if (heading) heading.textContent = title;
   const text = invalidView.querySelector("p");
   if (text) text.textContent = message || "此通知連結無效或尚未開放。";
   setVisible(noticeView, false);
@@ -31,6 +33,12 @@ function renderError(message) {
 
 function assertNoticeData(result) {
   if (!result?.caseData?.companyName || !result?.caseData?.workAddress) {
+    console.error("通知頁案件資料缺少必要欄位", {
+      caseId: result?.caseData?.caseId || "",
+      companyName: result?.caseData?.companyName || "",
+      workAddress: result?.caseData?.workAddress || "",
+      normalized: result
+    });
     throw new Error("案件資料載入不完整，請聯絡承辦人員。");
   }
 }
@@ -39,16 +47,48 @@ function renderCaseInfo(caseData) {
   noticeCaseInfo.innerHTML = `
     <div><strong>公司名稱</strong><span>${caseData.companyName}</span></div>
     <div><strong>求才工作地點</strong><span>${caseData.workAddress}</span></div>
+    <div><strong>求才時間</strong><span>${helpers.formatTaiwanDate(caseData.recruitmentDate) || "待承辦人確認"}</span></div>
     ${helpers.hasRecruitmentCount(caseData) ? `<div><strong>本次求才人數</strong><span>${caseData.recruitmentCount}人</span></div>` : ""}
   `;
 }
 
-function renderNoticeFile(noticeFile) {
+function setOriginalDownload(noticeFile) {
   if (!noticeFile?.previewUrl || !noticeFile?.downloadUrl) {
-    noticeFileView.innerHTML = `<p class="hint">正在載入求才內容預覽，請稍候……</p>`;
     downloadOriginalBtn.removeAttribute("href");
     downloadOriginalBtn.removeAttribute("download");
     downloadOriginalBtn.classList.add("disabled");
+    downloadOriginalBtn.hidden = true;
+    return;
+  }
+  downloadOriginalBtn.href = noticeFile.downloadUrl;
+  downloadOriginalBtn.download = noticeFile.fileName || "求才內容";
+  downloadOriginalBtn.classList.remove("disabled");
+  downloadOriginalBtn.hidden = false;
+}
+
+function renderTextNotice(caseData) {
+  const pdfData = noticeService.pdfData(currentNotice);
+  const questions = pdfService.qAndA(pdfData);
+  if (!helpers.latestSubmission(pdfData)) {
+    noticeFileView.innerHTML = `<p class="empty">求才內容尚未建立。</p>`;
+    return;
+  }
+  noticeFileView.innerHTML = `
+    <div class="notice-text-preview">
+      <dl>
+        <div><dt>產業類別</dt><dd>${caseData.industry || "待承辦人確認"}</dd></div>
+        <div><dt>工作時間</dt><dd>${pdfService.workTimeText(pdfData) || "08:00～17:00"}</dd></div>
+        <div><dt>公開求才電話</dt><dd>${caseData.publicPhone || "待承辦人確認"}</dd></div>
+      </dl>
+      <ul>${questions.map((item) => `<li>${item}</li>`).join("")}</ul>
+    </div>
+  `;
+}
+
+function renderNoticeFile(noticeFile, caseData) {
+  setOriginalDownload(noticeFile);
+  if (!noticeFile?.previewUrl || !noticeFile?.downloadUrl) {
+    renderTextNotice(caseData);
     return;
   }
   const isPdf = noticeFile.fileType === "application/pdf";
@@ -66,12 +106,14 @@ function renderNoticeFile(noticeFile) {
     `;
     const image = document.querySelector("#noticePreviewImage");
     image.addEventListener("error", () => {
-      noticeFileView.innerHTML = `<p class="empty">求才內容預覽載入失敗。</p>`;
+      console.warn("求才內容原始附件預覽載入失敗，已改用文字版求才內容。", {
+        caseId: caseData.caseId,
+        fileType: noticeFile.fileType,
+        previewUrl: noticeFile.previewUrl
+      });
+      renderTextNotice(caseData);
     });
   }
-  downloadOriginalBtn.href = noticeFile.downloadUrl;
-  downloadOriginalBtn.download = noticeFile.fileName || "求才內容";
-  downloadOriginalBtn.classList.remove("disabled");
 }
 
 function validatePdfData(data) {
@@ -115,25 +157,32 @@ async function boot() {
   try {
     const record = await noticeService.getPublicNotice(caseId, token);
     currentNotice = record;
+    console.info("通知頁案件載入完成", {
+      caseId,
+      tokenPresent: Boolean(token),
+      apiUrl: CONFIG.GOOGLE_APPS_SCRIPT_URL,
+      normalizedCase: currentNotice.caseData,
+      noticeFile: currentNotice.noticeFile
+    });
     assertNoticeData(currentNotice);
     renderCaseInfo(currentNotice.caseData);
-    renderNoticeFile(currentNotice.noticeFile);
+    renderNoticeFile(currentNotice.noticeFile, currentNotice.caseData);
     setVisible(loadingView, false);
     setVisible(invalidView, false);
     setVisible(noticeView, true);
-    noticeService.getNoticeFile(caseId, token).then((noticeFile) => {
-      currentNotice.noticeFile = { ...currentNotice.noticeFile, ...noticeFile };
-      renderNoticeFile(currentNotice.noticeFile);
-    }).catch((error) => {
-      console.error("求才內容檔案載入失敗", error);
-      noticeFileView.innerHTML = `<p class="empty">求才內容預覽載入失敗。</p>`;
-    });
     noticeService.recordNoticeView(caseId, token).catch((error) => {
       console.warn("通知查看紀錄寫入失敗", error);
     });
   } catch (error) {
     console.error("Notice initialization failed:", error);
-    renderError(error.message || "目前無法載入求才通知，請稍後再試或聯絡承辦人員。");
+    const code = error?.code || "";
+    const titleMap = {
+      CASE_NOT_FOUND: "找不到案件",
+      INVALID_TOKEN: "連結已失效或驗證失敗",
+      INVALID_RESPONSE: "資料格式錯誤",
+      NETWORK_ERROR: "網路或 API 錯誤"
+    };
+    renderError(error.message || "目前無法載入求才通知，請稍後再試或聯絡承辦人員。", titleMap[code] || "求才通知載入失敗");
   }
 }
 

@@ -13,27 +13,43 @@ const CASE_STATUS = {
 };
 
 function doPost(e) {
-  const body = JSON.parse((e && e.postData && e.postData.contents) || "{}");
-  const action = body.action;
-  const payload = body.payload || {};
+  try {
+    const body = JSON.parse((e && e.postData && e.postData.contents) || "{}");
+    const action = body.action;
+    const payload = body.payload || {};
 
-  if (action === "ping") return json_({ ok: true, service: "job-registration", time: new Date().toISOString() });
-  if (action === "createCase") return json_(createCase_(normalizeNewCase_(payload)));
-  if (action === "getCase") return json_(getCase_(payload.caseId));
-  if (action === "listCases") return json_(listCases_());
-  if (action === "updateCase") return json_(updateCase_(payload));
-  if (action === "updateCaseDetails") return json_(updateCaseDetails_(payload.caseId, payload.input));
-  if (action === "submitResponse") return json_(submitResponse_(payload.caseId, payload.response, payload.wasRevision, payload.submissionId));
-  if (action === "setStatus") return json_(setStatus_(payload.caseId, payload.status));
-  if (action === "markResponseViewed") return json_(markResponseViewed_(payload.caseId));
-  if (action === "reopenForRevision") return json_(reopenForRevision_(payload.caseId));
-  if (action === "savePdfInfo") return json_(savePdfInfo_(payload.caseId, payload.pdfInfo));
-  if (action === "uploadNoticeFile") return json_(uploadNoticeFile_(payload.caseId, payload.fileData, payload.options || {}));
-  if (action === "deleteNoticeFile") return json_(deleteNoticeFile_(payload.caseId));
-  if (action === "validateNoticeAccess") return json_(validateNoticeAccess_(payload.caseId, payload.token));
-  if (action === "recordNoticeView") return json_(recordNoticeView_(payload.caseId, payload.token));
+    if (action === "ping" || action === "healthCheck") return jsonOk_({ service: "job-registration", time: new Date().toISOString() });
+    if (action === "adminLogin") return jsonOk_(adminLogin_(payload));
+    if (action === "createCase") return jsonOk_(createCase_(normalizeNewCase_(payload)));
+    if (action === "getCase") return jsonOk_(getCase_(payload.caseId));
+    if (action === "getPublicFormCase") return jsonOk_(getPublicFormCase_(payload.caseId, payload.token));
+    if (action === "getPublicNotice") return jsonOk_(getPublicNotice_(payload.caseId, payload.token));
+    if (action === "getNoticeFile") return jsonOk_(getNoticeFile_(payload.caseId, payload.token));
+    if (action === "listCases") return jsonOk_(listCases_());
+    if (action === "updateCase") return jsonOk_(updateCase_(payload));
+    if (action === "updateCaseDetails") return jsonOk_(updateCaseDetails_(payload.caseId, payload.input));
+    if (action === "submitResponse") return jsonOk_(submitResponse_(payload.caseId, payload.response, payload.wasRevision, payload.submissionId));
+    if (action === "setStatus") return jsonOk_(setStatus_(payload.caseId, payload.status));
+    if (action === "markResponseViewed") return jsonOk_(markResponseViewed_(payload.caseId));
+    if (action === "reopenForRevision") return jsonOk_(reopenForRevision_(payload.caseId));
+    if (action === "savePdfInfo") return jsonOk_(savePdfInfo_(payload.caseId, payload.pdfInfo));
+    if (action === "uploadNoticeFile") return jsonOk_(uploadNoticeFile_(payload.caseId, payload.fileData, payload.options || {}));
+    if (action === "deleteNoticeFile") return jsonOk_(deleteNoticeFile_(payload.caseId));
+    if (action === "validateNoticeAccess") return jsonOk_(validateNoticeAccess_(payload.caseId, payload.token));
+    if (action === "recordNoticeView") return jsonOk_(recordNoticeView_(payload.caseId, payload.token));
 
-  return json_({ error: "Unknown action" });
+    return jsonError_("UNKNOWN_ACTION", "Unknown action");
+  } catch (error) {
+    return jsonError_(error.code || "API_ERROR", error.message || String(error));
+  }
+}
+
+function adminLogin_(payload) {
+  return {
+    token: Utilities.getUuid().replace(/-/g, ""),
+    email: payload.email || "",
+    expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString()
+  };
 }
 
 function createCase_(record) {
@@ -71,6 +87,7 @@ function normalizeNewCase_(input) {
     pdfUrl: "",
     hasUnreadResponse: false,
     responseViewedAt: "",
+    formAccessToken: generateAccessToken_(),
     noticeAccessToken: generateAccessToken_(),
     noticeFileId: "",
     noticeFileName: "",
@@ -91,7 +108,12 @@ function normalizeNewCase_(input) {
 }
 
 function getCase_(caseId) {
-  return listCases_().find((item) => item.caseId === caseId) || null;
+  const sheet = getSheet_();
+  ensureHeaders_(sheet);
+  const values = sheet.getDataRange().getValues();
+  const headers = values.shift();
+  const row = values.find((item) => item[headers.indexOf("caseId")] === caseId);
+  return row ? rowToObject_(headers, row) : null;
 }
 
 function listCases_() {
@@ -246,6 +268,14 @@ function savePdfInfo_(caseId, pdfInfo) {
   });
 }
 
+function getPublicFormCase_(caseId, token) {
+  const record = getCase_(caseId);
+  if (!record) throw codedError_("CASE_NOT_FOUND", "找不到案件。");
+  if (record.formAccessToken && record.formAccessToken !== token) throw codedError_("INVALID_TOKEN", "填寫連結驗證失敗。");
+  if (record.status === "deleted") throw codedError_("CASE_DELETED", "此案件已刪除。");
+  return publicCasePayload_(record);
+}
+
 function uploadNoticeFile_(caseId, fileData, options) {
   const record = getCase_(caseId);
   if (!record) throw new Error("Case not found");
@@ -331,7 +361,9 @@ function deleteNoticeFile_(caseId) {
 
 function validateNoticeAccess_(caseId, token) {
   const record = getCase_(caseId);
-  if (!record || record.noticeAccessToken !== token || record.status !== "notice_ready" || !record.noticeFileUrl) return null;
+  if (!record) throw codedError_("CASE_NOT_FOUND", "找不到案件。");
+  if (record.noticeAccessToken !== token) throw codedError_("INVALID_TOKEN", "通知連結驗證失敗。");
+  if (record.status !== "notice_ready") throw codedError_("NOTICE_NOT_READY", "求才內容尚未建立。");
   return record;
 }
 
@@ -347,6 +379,38 @@ function recordNoticeView_(caseId, token) {
     viewCount: Number(record.viewCount || 0) + 1,
     updatedAt: now
   });
+}
+
+function getPublicNotice_(caseId, token) {
+  const record = validateNoticeAccess_(caseId, token);
+  return publicCasePayload_(record);
+}
+
+function getNoticeFile_(caseId, token) {
+  const record = validateNoticeAccess_(caseId, token);
+  return {
+    noticeFile: noticeFilePayload_(record)
+  };
+}
+
+function publicCasePayload_(record) {
+  const latest = latestSubmission_(record);
+  return {
+    case: record,
+    caseData: record,
+    latestSubmission: latest,
+    noticeFile: noticeFilePayload_(record)
+  };
+}
+
+function noticeFilePayload_(record) {
+  return {
+    fileName: record.noticeFileName || "",
+    fileType: record.noticeFileType || "",
+    fileSize: Number(record.noticeFileSize || 0),
+    previewUrl: record.noticeFileUrl || "",
+    downloadUrl: record.noticeFileUrl || ""
+  };
 }
 
 function writeCase_(record) {
@@ -383,7 +447,15 @@ function getSheet_() {
 }
 
 function ensureHeaders_(sheet) {
-  if (sheet.getLastRow() === 0) sheet.appendRow(headers_());
+  const expected = headers_();
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(expected);
+    return;
+  }
+  const current = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getValues()[0].filter(Boolean);
+  const missing = expected.filter((key) => current.indexOf(key) === -1);
+  if (!missing.length) return;
+  sheet.getRange(1, current.length + 1, 1, missing.length).setValues([missing]);
 }
 
 function headers_() {
@@ -413,6 +485,7 @@ function headers_() {
     "pdfUrl",
     "hasUnreadResponse",
     "responseViewedAt",
+    "formAccessToken",
     "noticeAccessToken",
     "noticeFileId",
     "noticeFileName",
@@ -445,6 +518,8 @@ function rowToObject_(headers, row) {
 function normalizeOutput_(record) {
   return {
     ...record,
+    formAccessToken: record.formAccessToken || "",
+    noticeAccessToken: record.noticeAccessToken || generateAccessToken_(),
     recruitmentCount: record.recruitmentCount === "" || record.recruitmentCount === null || record.recruitmentCount === undefined ? null : Number(record.recruitmentCount),
     salaryMin: Number(record.salaryMin || 0),
     salaryMax: Number(record.salaryMax || 0),
@@ -494,4 +569,24 @@ function json_(data) {
   return ContentService
     .createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+function jsonOk_(result) {
+  return json_({ ok: true, result: result });
+}
+
+function jsonError_(code, message) {
+  return json_({
+    ok: false,
+    error: {
+      code: code || "API_ERROR",
+      message: message || "線上服務暫時無法使用。"
+    }
+  });
+}
+
+function codedError_(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
 }
