@@ -3,7 +3,8 @@
 const CONFIG = {
   STORAGE_MODE: "remote",
   GOOGLE_APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbw5O0YNav0Ioec2fwTbnyGRp_CTincrdNaOV_OHpQSMJmhzZJkR_4AnCWFyV9sJlC2b/exec",
-  PUBLIC_APP_BASE_URL: "https://sally741117.github.io/job-registration-confirmation"
+  PUBLIC_APP_BASE_URL: "https://sally741117.github.io/job-registration-confirmation",
+  ADMIN_EMAIL: "sally741117@gmail.com"
 };
 
 function isValidAppsScriptUrl(value) {
@@ -242,6 +243,11 @@ const helpers = {
       || record.case?.formToken
       || record.case?.fillToken
       || "";
+  },
+  async sha256Hex(value) {
+    const bytes = new TextEncoder().encode(String(value || ""));
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
   }
 };
 
@@ -295,9 +301,10 @@ const remoteClient = {
   adminAuthPromise: null,
   loginModalOpen: false,
   lastAuthFailureAt: 0,
+  loginPromptMessage: "",
   getAdminSession() {
     try {
-      const raw = localStorage.getItem(this.adminSessionKey) || sessionStorage.getItem(this.adminSessionKey);
+      const raw = sessionStorage.getItem(this.adminSessionKey);
       if (!raw) return null;
       const session = JSON.parse(raw);
       if (session?.adminSessionToken && !session.token) {
@@ -319,19 +326,17 @@ const remoteClient = {
       email: session.email || session.adminEmail || "",
       expiresAt
     };
-    localStorage.setItem(this.adminSessionKey, JSON.stringify(stored));
-    sessionStorage.removeItem(this.adminSessionKey);
+    sessionStorage.setItem(this.adminSessionKey, JSON.stringify(stored));
   },
   clearAdminSession() {
     sessionStorage.removeItem(this.adminSessionKey);
-    localStorage.removeItem(this.adminSessionKey);
   },
   isSessionUsable(session) {
     if (!session?.token) return false;
     if (!session.expiresAt) return true;
     return new Date(session.expiresAt).getTime() > Date.now() + 60000;
   },
-  showAdminLoginDialog() {
+  showAdminLoginDialog(message = "") {
     return new Promise((resolve, reject) => {
       if (this.loginModalOpen) {
         reject(new Error("管理員登入視窗已開啟。"));
@@ -346,16 +351,31 @@ const remoteClient = {
       overlay.innerHTML = `
         <form style="width:min(420px,100%);background:#fff;border-radius:8px;padding:20px;box-shadow:0 20px 60px rgba(15,23,42,.25);display:grid;gap:12px;">
           <h2 style="margin:0;font-size:20px;">管理員登入</h2>
-          <p style="margin:0;color:#475569;font-size:14px;">請輸入已授權的管理員 Email 與驗證碼。</p>
-          <label style="display:grid;gap:6px;font-size:14px;">Email<input name="email" type="email" autocomplete="username" required style="font:inherit;padding:10px;border:1px solid #cbd5e1;border-radius:6px;"></label>
-          <label style="display:grid;gap:6px;font-size:14px;">驗證碼<input name="adminCode" type="password" autocomplete="current-password" required style="font:inherit;padding:10px;border:1px solid #cbd5e1;border-radius:6px;"></label>
+          <p data-login-help style="margin:0;color:#475569;font-size:14px;">請輸入管理員密碼。</p>
+          <label style="display:grid;gap:6px;font-size:14px;">Email<input name="email" type="email" autocomplete="username" readonly required value="${CONFIG.ADMIN_EMAIL || ""}" style="font:inherit;padding:10px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;"></label>
+          <label style="display:grid;gap:6px;font-size:14px;">密碼
+            <span style="display:flex;gap:8px;">
+              <input name="password" type="password" autocomplete="current-password" required style="font:inherit;padding:10px;border:1px solid #cbd5e1;border-radius:6px;flex:1;min-width:0;">
+              <button type="button" data-toggle-password style="padding:10px 12px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;">顯示</button>
+            </span>
+          </label>
+          <p data-login-error style="${message ? "" : "display:none;"}margin:0;color:#b91c1c;font-size:14px;">${message || "Email或密碼不正確"}</p>
           <div style="display:flex;gap:10px;justify-content:flex-end;">
             <button type="button" data-cancel style="padding:10px 14px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;">取消</button>
-            <button type="submit" style="padding:10px 14px;border:0;background:#2563eb;color:#fff;border-radius:6px;">登入</button>
+            <button type="submit" data-login-submit style="padding:10px 14px;border:0;background:#2563eb;color:#fff;border-radius:6px;">登入</button>
           </div>
         </form>
       `;
       const form = overlay.querySelector("form");
+      const passwordInput = form.password;
+      const submitButton = overlay.querySelector("[data-login-submit]");
+      const errorText = overlay.querySelector("[data-login-error]");
+      const toggleButton = overlay.querySelector("[data-toggle-password]");
+      toggleButton.addEventListener("click", () => {
+        const visible = passwordInput.type === "text";
+        passwordInput.type = visible ? "password" : "text";
+        toggleButton.textContent = visible ? "顯示" : "隱藏";
+      });
       const cleanup = () => {
         this.loginModalOpen = false;
         overlay.remove();
@@ -364,17 +384,38 @@ const remoteClient = {
         cleanup();
         reject(new Error("尚未登入管理後台。"));
       });
-      form.addEventListener("submit", (event) => {
+      form.addEventListener("submit", async (event) => {
         event.preventDefault();
         const data = new FormData(form);
-        cleanup();
-        resolve({
+        const credentials = {
           email: String(data.get("email") || "").trim(),
-          adminCode: String(data.get("adminCode") || "").trim()
-        });
+          password: String(data.get("password") || "")
+        };
+        if (!credentials.password) {
+          errorText.style.display = "block";
+          return;
+        }
+        submitButton.disabled = true;
+        submitButton.textContent = "登入中…";
+        errorText.style.display = "none";
+        try {
+          const passwordDigest = await helpers.sha256Hex(credentials.password);
+          const result = await this.request("adminLogin", { email: credentials.email, password: passwordDigest, skipAdminSession: true }, { skipAuthRetry: true });
+          const normalized = this.normalizeAdminLogin(result);
+          if (!normalized.token) throw new Error("INVALID_CREDENTIALS");
+          this.setAdminSession(normalized);
+          cleanup();
+          resolve(normalized.token);
+        } catch (error) {
+          errorText.textContent = "Email或密碼不正確";
+          errorText.style.display = "block";
+          submitButton.disabled = false;
+          submitButton.textContent = "登入";
+          passwordInput.select();
+        }
       });
       document.body.appendChild(overlay);
-      form.email.focus();
+      passwordInput.focus();
     });
   },
   needsAdmin(action) {
@@ -398,34 +439,21 @@ const remoteClient = {
   async ensureAdminSession() {
     const existing = this.getAdminSession();
     if (this.isSessionUsable(existing)) return existing.token;
-    if (Date.now() - this.lastAuthFailureAt < 8000) {
-      throw new Error("管理員登入尚未完成，請稍後再試。");
-    }
     if (this.adminAuthPromise) return this.adminAuthPromise;
-    this.adminAuthPromise = this.loginAndStoreSession()
+    const promptMessage = this.loginPromptMessage;
+    this.loginPromptMessage = "";
+    this.adminAuthPromise = this.loginAndStoreSession(promptMessage)
       .finally(() => {
         this.adminAuthPromise = null;
       });
     return this.adminAuthPromise;
   },
-  async loginAndStoreSession() {
-    try {
-      const credentials = await this.showAdminLoginDialog();
-      if (!credentials.email || !credentials.adminCode) throw new Error("尚未登入管理後台。");
-      const result = await this.request("adminLogin", { email: credentials.email, adminCode: credentials.adminCode, skipAdminSession: true }, { skipAuthRetry: true });
-      const normalized = this.normalizeAdminLogin(result);
-      if (!normalized.token) throw new Error("管理員登入失敗。");
-      this.setAdminSession(normalized);
-      this.lastAuthFailureAt = 0;
-      return normalized.token;
-    } catch (error) {
-      this.lastAuthFailureAt = Date.now();
-      throw error;
-    }
+  async loginAndStoreSession(message = "") {
+    return this.showAdminLoginDialog(message);
   },
   normalizeAdminLogin(result = {}) {
     return {
-      token: result.token || result.sessionToken || result.adminSessionToken || "",
+      token: result.sessionToken || result.token || result.adminSessionToken || "",
       email: result.email || result.adminEmail || result.admin?.email || "",
       expiresAt: result.expiresAt || result.admin?.expiresAt || "",
       expiresIn: result.expiresIn || ""
@@ -488,6 +516,7 @@ const remoteClient = {
       || /登入|逾時|授權|UNAUTHORIZED|SESSION_EXPIRED/i.test(authMessage);
     if ((!response.ok || result?.ok === false) && isExplicitAuthFailure && this.needsAdmin(action) && !options.skipAuthRetry) {
       this.clearAdminSession();
+      this.loginPromptMessage = authCode === "SESSION_EXPIRED" ? "登入已逾時，請重新登入" : "";
       if (!options.retried) return this.request(action, payload, { retried: true });
     }
     if (!result?.ok) {

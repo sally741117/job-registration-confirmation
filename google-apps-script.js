@@ -45,11 +45,37 @@ function doPost(e) {
 }
 
 function adminLogin_(payload) {
+  const email = String(payload.email || "").trim().toLowerCase();
+  const password = String(payload.password || "");
+  const props = PropertiesService.getScriptProperties();
+  const adminEmail = String(props.getProperty("ADMIN_EMAIL") || "").toLowerCase();
+  if (!email || !password || email !== adminEmail) throw codedError_("INVALID_CREDENTIALS", "Email或密碼不正確");
+  if (isLoginLocked_(email)) throw codedError_("INVALID_CREDENTIALS", "Email或密碼不正確");
+  const salt = props.getProperty("ADMIN_PASSWORD_SALT") || "";
+  const expected = props.getProperty("ADMIN_PASSWORD_HASH") || "";
+  if (!salt || !expected || sha256Hex_(`${salt}:${password}`) !== expected) {
+    registerLoginFailure_(email);
+    throw codedError_("INVALID_CREDENTIALS", "Email或密碼不正確");
+  }
+  clearLoginFailures_(email);
+  const token = generateAccessToken_();
+  const expiresAt = new Date(Date.now() + 21600 * 1000).toISOString();
   return {
-    token: Utilities.getUuid().replace(/-/g, ""),
-    email: payload.email || "",
-    expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString()
+    sessionToken: token,
+    email,
+    expiresAt
   };
+}
+
+function setAdminPassword(password) {
+  if (!password || String(password).length < 8) throw new Error("管理員密碼長度至少需 8 碼。");
+  const salt = generateAccessToken_();
+  PropertiesService.getScriptProperties().setProperties({
+    ADMIN_PASSWORD_SALT: salt,
+    ADMIN_PASSWORD_HASH: sha256Hex_(`${salt}:${sha256Hex_(String(password))}`),
+    ADMIN_SESSION_SECRET: PropertiesService.getScriptProperties().getProperty("ADMIN_SESSION_SECRET") || generateAccessToken_()
+  }, false);
+  return { ok: true, updatedAt: new Date().toISOString() };
 }
 
 function createCase_(record) {
@@ -579,6 +605,32 @@ function generateSubmissionId_() {
 
 function generateAccessToken_() {
   return Utilities.getUuid().replace(/-/g, "") + Utilities.getUuid().replace(/-/g, "");
+}
+
+function sha256Hex_(text) {
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(text))
+    .map((byte) => (`0${(byte & 0xff).toString(16)}`).slice(-2))
+    .join("");
+}
+
+function loginFailureKey_(email) {
+  return `ADMIN_LOGIN_FAILURE_${sha256Hex_(String(email || "").toLowerCase()).slice(0, 24)}`;
+}
+
+function isLoginLocked_(email) {
+  const data = JSON.parse(CacheService.getScriptCache().get(loginFailureKey_(email)) || "{}");
+  return Number(data.count || 0) >= 5;
+}
+
+function registerLoginFailure_(email) {
+  const cache = CacheService.getScriptCache();
+  const key = loginFailureKey_(email);
+  const data = JSON.parse(cache.get(key) || "{}");
+  cache.put(key, JSON.stringify({ count: Number(data.count || 0) + 1 }), 600);
+}
+
+function clearLoginFailures_(email) {
+  CacheService.getScriptCache().remove(loginFailureKey_(email));
 }
 
 function latestSubmission_(record) {
