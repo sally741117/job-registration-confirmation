@@ -48,6 +48,27 @@ const NOTICE_FILE_DB = {
   storeName: "files"
 };
 
+const SUBMISSION_FIELDS = [
+  "standardTime",
+  "shiftType",
+  "shifts",
+  "rotationMethod",
+  "shiftNote",
+  "partTimes",
+  "leaveType",
+  "weekendFixed",
+  "weekendNote",
+  "workDays",
+  "restDays",
+  "monthlyLeaveDays",
+  "leaveOther",
+  "lactationRoom",
+  "childcare",
+  "childcareItems",
+  "childcareOther",
+  "finalConfirm"
+];
+
 function serviceError(code, message, details = {}) {
   const error = new Error(message);
   error.code = code || "API_ERROR";
@@ -524,8 +545,20 @@ const remoteClient = {
       const apiMessage = result?.error?.message || result?.error || result?.message || "線上服務暫時無法使用。";
       throw serviceError(apiCode, apiMessage, { httpStatus: response.status, raw: result });
     }
-    if (!["healthCheck", "ping"].includes(action) && result?.result?.service === "job-registration-backend") {
-      throw serviceError("INVALID_RESPONSE", "線上服務回傳了非預期的健康檢查資料，請稍後重試。", { httpStatus: response.status, raw: result });
+    const healthPayload = result?.result?.service || result?.data?.service || result?.service;
+    if (!["healthCheck", "ping"].includes(action) && healthPayload) {
+      console.error("Remote API returned health payload for data action", {
+        action,
+        payload,
+        httpStatus: response.status,
+        responseSummary: {
+          ok: result?.ok,
+          resultService: result?.result?.service,
+          dataService: result?.data?.service,
+          service: result?.service
+        }
+      });
+      throw serviceError("HEALTH_RESPONSE", "服務請求送錯，收到健康檢查資料。", { httpStatus: response.status, raw: result, action });
     }
     return result.result ?? result.data ?? result;
   },
@@ -1230,6 +1263,73 @@ const caseService = {
 };
 
 const noticeService = {
+  normalizeSubmission(raw = {}) {
+    const warnings = [];
+    const source = raw && typeof raw === "object" ? raw : {};
+    const responseSource = source.response && typeof source.response === "object"
+      ? source.response
+      : source.responseJson && typeof source.responseJson === "object"
+        ? source.responseJson
+        : source;
+    const aliases = {
+      standardTime: ["standardTime", "workTime", "workHours"],
+      shiftType: ["shiftType", "workShiftType"],
+      shifts: ["shifts", "shiftList"],
+      rotationMethod: ["rotationMethod", "rotation"],
+      partTimes: ["partTimes", "partTimeList"],
+      leaveType: ["leaveType", "dayOffType"],
+      weekendFixed: ["weekendFixed", "weekendIsFixed"],
+      childcareItems: ["childcareItems", "childcareList"],
+      finalConfirm: ["finalConfirm", "confirmed", "isConfirmed"]
+    };
+    const pick = (key) => {
+      const names = aliases[key] || [key];
+      for (const name of names) {
+        if (Object.prototype.hasOwnProperty.call(responseSource, name)) return responseSource[name];
+      }
+      return undefined;
+    };
+    const normalizeBooleanText = (value) => {
+      if (value === true) return "是";
+      if (value === false) return "否";
+      return value === undefined || value === null ? "" : String(value);
+    };
+    const submission = {
+      submissionId: source.submissionId || "",
+      submittedAt: source.submittedAt || "",
+      standardTime: pick("standardTime") || { start: "08:00", end: "17:00" },
+      shiftType: pick("shiftType") || "",
+      shifts: Array.isArray(pick("shifts")) ? pick("shifts") : [],
+      rotationMethod: pick("rotationMethod") || "",
+      shiftNote: pick("shiftNote") || "",
+      partTimes: Array.isArray(pick("partTimes")) ? pick("partTimes") : [],
+      leaveType: pick("leaveType") || "",
+      weekendFixed: normalizeBooleanText(pick("weekendFixed")),
+      weekendNote: pick("weekendNote") || "",
+      workDays: pick("workDays") || "",
+      restDays: pick("restDays") || "",
+      monthlyLeaveDays: pick("monthlyLeaveDays") || "",
+      leaveOther: pick("leaveOther") || "",
+      lactationRoom: normalizeBooleanText(pick("lactationRoom")),
+      childcare: pick("childcare") || "",
+      childcareItems: Array.isArray(pick("childcareItems")) ? pick("childcareItems") : [],
+      childcareOther: pick("childcareOther") || "",
+      finalConfirm: Boolean(pick("finalConfirm"))
+    };
+    const extraFields = {};
+    Object.keys(responseSource || {}).forEach((key) => {
+      const known = SUBMISSION_FIELDS.includes(key) || Object.values(aliases).some((names) => names.includes(key));
+      if (!known) extraFields[key] = responseSource[key];
+    });
+    ["shifts", "partTimes", "childcareItems"].forEach((key) => {
+      const rawValue = pick(key);
+      if (rawValue !== undefined && !Array.isArray(rawValue)) {
+        warnings.push(`${key} 欄位不是陣列，已使用空陣列。`);
+        console.warn("公司回覆欄位格式已寬鬆替代", { field: key, value: rawValue });
+      }
+    });
+    return { submission, extraFields, warnings };
+  },
   normalize(raw = {}) {
     let data = raw;
     for (let i = 0; i < 3; i += 1) {
@@ -1240,7 +1340,8 @@ const noticeService = {
     const caseSource = caseService.normalizeCaseRecord(data.caseData || data.case || data.record || data);
     const fileSource = data.noticeFile || {};
     const latestSubmission = data.latestSubmission || helpers.latestSubmission(caseSource) || null;
-    const latestResponse = latestSubmission?.response || latestSubmission?.responseJson || caseSource.response || {};
+    const normalizedSubmission = this.normalizeSubmission(latestSubmission || caseSource.response || {});
+    const latestResponse = normalizedSubmission.submission;
     const mergedCase = caseService.normalizeCaseRecord({
       ...caseSource,
       ...latestResponse,
@@ -1258,8 +1359,11 @@ const noticeService = {
       ok: true,
       case: mergedCase,
       caseData: mergedCase,
+      submission: normalizedSubmission.submission,
+      extraFields: normalizedSubmission.extraFields,
+      warnings: normalizedSubmission.warnings,
       noticeFile,
-      latestSubmission
+      latestSubmission: latestSubmission ? { ...latestSubmission, response: normalizedSubmission.submission, responseJson: normalizedSubmission.submission } : null
     };
   },
   async getPublicNotice(caseId, token) {

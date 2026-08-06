@@ -20,6 +20,7 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", Arial, sans-serif;
+  font-size: 16px;
   line-height: 1.55;
 }
 
@@ -464,6 +465,14 @@ a.secondary {
   box-shadow: 0 0 0 2px rgba(21, 128, 61, .12);
 }
 
+.case-item.awaiting-review {
+  position: relative;
+  border-color: #e8a23a;
+  border-left: 7px solid #e8a23a;
+  background: #fff7e8;
+  box-shadow: 0 12px 26px rgba(180, 83, 9, .10);
+}
+
 .case-item div {
   display: grid;
   gap: 3px;
@@ -810,8 +819,8 @@ a.secondary {
 }
 
 .status.submitted {
-  color: #0f5132;
-  background: #dcfce7;
+  color: #6f3a05;
+  background: #fed7aa;
 }
 
 .status.revision_open {
@@ -995,4 +1004,54 @@ a.secondary {
   .identity-grid,
   .process-steps,
   .version-item { grid-template-columns: 1fr; }
+}
+
+@media (min-width: 721px) {
+  .admin-shell {
+    width: min(1180px, calc(100% - 36px));
+  }
+
+  .admin-shell .page-header,
+  .admin-shell .card {
+    padding: 20px 22px;
+  }
+
+  .admin-shell h1 {
+    font-size: 30px;
+  }
+
+  .admin-shell h2 {
+    font-size: 20px;
+  }
+
+  .admin-list-item {
+    grid-template-columns: 1.15fr 1.05fr .9fr 1fr;
+    gap: 10px 12px;
+    padding: 18px 20px;
+    font-size: 15px;
+    line-height: 1.42;
+  }
+
+  .admin-list-item strong,
+  .admin-list-item .breakable {
+    font-size: 16px;
+  }
+
+  .admin-list-item small {
+    font-size: 14px;
+  }
+
+  .admin-list-item .action-row {
+    gap: 8px;
+  }
+
+  .admin-list-item .primary,
+  .admin-list-item .secondary,
+  .admin-list-item .danger,
+  .admin-list-item .link-button,
+  .admin-list-item .more-actions summary {
+    min-height: 42px;
+    padding: 9px 14px;
+    font-size: 15px;
+  }
 }

@@ -18,6 +18,7 @@ function doPost(e) {
     const action = body.action;
     const payload = body.payload || {};
 
+    if (!action) return jsonError_("UNKNOWN_ACTION", "無效的服務請求");
     if (action === "ping" || action === "healthCheck") return jsonOk_({ service: "job-registration", time: new Date().toISOString() });
     if (action === "adminLogin") return jsonOk_(adminLogin_(payload));
     if (action === "createCase") return jsonOk_(createCase_(normalizeNewCase_(payload)));
@@ -38,7 +39,7 @@ function doPost(e) {
     if (action === "validateNoticeAccess") return jsonOk_(validateNoticeAccess_(payload.caseId, payload.token));
     if (action === "recordNoticeView") return jsonOk_(recordNoticeView_(payload.caseId, payload.token));
 
-    return jsonError_("UNKNOWN_ACTION", "Unknown action");
+    return jsonError_("UNKNOWN_ACTION", "無效的服務請求");
   } catch (error) {
     return jsonError_(error.code || "API_ERROR", error.message || String(error));
   }
@@ -509,7 +510,6 @@ function ensureHeaders_(sheet) {
 function headers_() {
   return [
     "caseId",
-    "requestId",
     "status",
     "createdAt",
     "updatedAt",
@@ -550,7 +550,8 @@ function headers_() {
     "noticeViewed",
     "firstViewedAt",
     "lastViewedAt",
-    "viewCount"
+    "viewCount",
+    "requestId"
   ];
 }
 

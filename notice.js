@@ -180,6 +180,7 @@ async function boot() {
       CASE_NOT_FOUND: "找不到案件",
       INVALID_TOKEN: "連結已失效或驗證失敗",
       INVALID_RESPONSE: "資料格式錯誤",
+      HEALTH_RESPONSE: "服務請求錯誤",
       NETWORK_ERROR: "網路或 API 錯誤"
     };
     renderError(error.message || "目前無法載入求才通知，請稍後再試或聯絡承辦人員。", titleMap[code] || "求才通知載入失敗");

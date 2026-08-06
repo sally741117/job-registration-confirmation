@@ -227,8 +227,9 @@ async function renderCaseList(options = {}) {
   caseList.innerHTML = cases.map((item) => {
     const latest = latestSubmissionForList(item);
     const isNew = highlightedCaseId && item.caseId === highlightedCaseId;
+    const isSubmitted = item.status === CASE_STATUS.submitted;
     return `
-      <article class="case-item admin-list-item ${isNew ? "newly-created" : ""}" data-case-id="${item.caseId}">
+      <article class="case-item admin-list-item ${isNew ? "newly-created" : ""} ${isSubmitted ? "awaiting-review" : ""}" data-case-id="${item.caseId}">
         <div><small>公司名稱</small><strong>${item.companyName}</strong></div>
         <div><small>案件編號</small><span class="breakable">${item.caseId}</span></div>
         <div><small>工作地點</small><span>${item.workAddress || ""}</span></div>
