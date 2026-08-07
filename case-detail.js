@@ -34,6 +34,15 @@ const copyFormLinkBtn = document.querySelector("#copyFormLinkBtn");
 const reopenBtn = document.querySelector("#reopenBtn");
 const downloadInternalPdfBtn = document.querySelector("#downloadInternalPdfBtn");
 const pdfTemplate = document.querySelector("#pdfTemplate");
+const progressSections = [
+  { key: "basic", selector: "#caseHeader", label: "待公司填寫" },
+  { key: "response", selector: "#latestResponseContent", label: "公司已回覆" },
+  { key: "details", selector: "#editCaseForm", label: "補齊案件資料" },
+  { key: "upload", selector: "#noticeDropZone", label: "上傳求才內容" },
+  { key: "notice", selector: "#noticeResult", label: "公司查看通知" }
+];
+let progressObserver = null;
+let manualProgressActiveUntil = 0;
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -73,6 +82,48 @@ function showMessage(title, message, canRetry = true) {
 
 function copyText(text) {
   return navigator.clipboard.writeText(text);
+}
+
+function progressTarget(key) {
+  const item = progressSections.find((entry) => entry.key === key);
+  if (!item) return null;
+  const inner = document.querySelector(item.selector);
+  return inner?.closest(".card") || inner;
+}
+
+function scrollToProgressSection(key, focusTarget = true) {
+  const target = progressTarget(key);
+  if (!target) return;
+  const top = target.getBoundingClientRect().top + window.scrollY - 28;
+  manualProgressActiveUntil = Date.now() + 1200;
+  window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+  progressPanel.querySelectorAll(".process-step").forEach((item) => item.classList.toggle("viewing", item.dataset.target === key));
+  if (focusTarget) {
+    window.setTimeout(() => {
+      target.setAttribute("tabindex", "-1");
+      target.focus({ preventScroll: true });
+      progressPanel.querySelectorAll(".process-step").forEach((item) => item.classList.toggle("viewing", item.dataset.target === key));
+    }, 350);
+  }
+}
+
+function setupProgressObserver() {
+  if (progressObserver) progressObserver.disconnect();
+  const targets = progressSections.map((item) => ({ key: item.key, element: progressTarget(item.key) })).filter((item) => item.element);
+  if (!targets.length) return;
+  progressObserver = new IntersectionObserver((entries) => {
+    const visible = entries
+      .filter((entry) => entry.isIntersecting)
+      .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+    if (!visible) return;
+    if (Date.now() < manualProgressActiveUntil) return;
+    const key = visible.target.dataset.progressSection;
+    progressPanel.querySelectorAll(".process-step").forEach((item) => item.classList.toggle("viewing", item.dataset.target === key));
+  }, { rootMargin: "-20% 0px -55% 0px", threshold: [0.05, 0.2, 0.45] });
+  targets.forEach(({ key, element }) => {
+    element.dataset.progressSection = key;
+    progressObserver.observe(element);
+  });
 }
 
 function clearErrors(root = document) {
@@ -187,7 +238,11 @@ function renderProgress() {
     ["上傳求才內容", Boolean(currentCase.noticeFileUrl)],
     ["公司查看通知", Boolean(currentCase.noticeViewed)]
   ];
-  progressPanel.innerHTML = steps.map(([label, done], index) => `<div class="${done ? "done" : ""}"><b>${index + 1}</b><span>${label}</span></div>`).join("");
+  progressPanel.innerHTML = steps.map(([label, done], index) => {
+    const item = progressSections[index];
+    const hasTarget = Boolean(progressTarget(item.key));
+    return `<button class="process-step ${done ? "done" : ""}" data-target="${item.key}" type="button" ${hasTarget ? "" : "disabled"}><b>${index + 1}</b><span>${item.label || label}</span></button>`;
+  }).join("");
   const hasSubmission = Boolean(helpers.latestSubmission(currentCase));
   reopenBtn.disabled = !hasSubmission || currentCase.status === CASE_STATUS.revision_open;
   downloadInternalPdfBtn.disabled = !hasSubmission;
@@ -396,6 +451,7 @@ function renderAll() {
   renderUploadSection();
   renderNoticeData();
   renderViewRecord();
+  setupProgressObserver();
 }
 
 async function initDetailPage() {
@@ -492,6 +548,12 @@ downloadInternalPdfBtn.addEventListener("click", async () => {
     return;
   }
   await pdfService.download(submissionService.mergeCaseAndResponse(currentCase), pdfTemplate);
+});
+
+progressPanel.addEventListener("click", (event) => {
+  const button = event.target.closest(".process-step");
+  if (!button || button.disabled) return;
+  scrollToProgressSection(button.dataset.target);
 });
 
 retryLoadBtn?.addEventListener("click", initDetailPage);

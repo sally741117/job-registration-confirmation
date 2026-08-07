@@ -1,12 +1,12 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>求才登記通知</title>
-  <link rel="stylesheet" href="./styles.css?v=20260806-noticefix1">
-  <script defer src="./services.js?v=20260806-noticefix1"></script>
-  <script defer src="./notice.js?v=20260806-noticefix1"></script>
+  <link rel="stylesheet" href="./styles.css?v=20260807-navpreview1">
+  <script defer src="./services.js?v=20260807-navpreview1"></script>
+  <script defer src="./notice.js?v=20260807-navpreview1"></script>
 </head>
 <body>
   <main class="shell notice-shell">
@@ -33,10 +33,18 @@
         <div class="section-title"><span>一</span><h2>求才內容</h2></div>
         <div id="noticeFileView" class="notice-file-view"></div>
         <div class="action-row">
-          <button id="downloadPdfBtn" class="primary" type="button">下載求才通知單 PDF</button>
-          <a id="downloadOriginalBtn" class="secondary link-button" download>下載原始求才內容</a>
+          <button id="downloadPdfBtn" class="secondary" type="button">下載求才通知單 PDF</button>
         </div>
         <p class="hint">如對內容有疑問，請聯絡承辦人員。</p>
+      </section>
+
+      <section class="card">
+        <div class="section-title"><span>二</span><h2>求才登記表</h2></div>
+        <p class="hint">以下為本次求才登記原始資料，可點擊放大查看。</p>
+        <div id="originalFilesView" class="notice-original-files"></div>
+        <div class="action-row">
+          <a id="downloadOriginalBtn" class="secondary link-button" download>開啟／下載原始求才登記表</a>
+        </div>
       </section>
 
       <section class="card reminder-card">

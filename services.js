@@ -1242,13 +1242,13 @@ const caseService = {
   async validateNoticeAccess(caseId, token) {
     if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.normalizeCaseRecord(await remoteClient.request("getPublicNotice", { caseId, token }));
     const record = await this.getCase(caseId);
-    if (!record || record.noticeAccessToken !== token || record.status !== CASE_STATUS.notice_ready || (!record.noticeFileUrl && !record.noticeFileKey)) return null;
+    if (!record || record.noticeAccessToken !== token || record.status !== CASE_STATUS.notice_ready) return null;
     return noticeFileStore.attachObjectUrl(record);
   },
   async recordNoticeView(caseId, token) {
     if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.normalizeCaseRecord(await remoteClient.request("recordNoticeView", { caseId, token }));
     const record = await this.getCase(caseId);
-    if (!record || record.noticeAccessToken !== token || record.status !== CASE_STATUS.notice_ready || (!record.noticeFileUrl && !record.noticeFileKey)) return null;
+    if (!record || record.noticeAccessToken !== token || record.status !== CASE_STATUS.notice_ready) return null;
     const now = new Date().toISOString();
     const updated = await this.updateCase({
       ...record,
@@ -1348,13 +1348,24 @@ const noticeService = {
       response: latestResponse,
       latestSubmissionId: latestSubmission?.submissionId || caseSource.latestSubmissionId || ""
     });
-    const noticeFile = {
-      fileName: fileSource.fileName || caseSource.noticeFileName || "",
-      fileType: fileSource.fileType || caseSource.noticeFileType || "",
-      fileSize: Number(fileSource.fileSize || caseSource.noticeFileSize || 0),
-      previewUrl: fileSource.previewUrl || fileSource.fileUrl || caseSource.noticeFileUrl || "",
-      downloadUrl: fileSource.downloadUrl || fileSource.fileUrl || caseSource.noticeFileUrl || ""
-    };
+    const normalizeNoticeFile = (file = {}) => ({
+      id: file.id || file.noticeFileId || file.fileId || caseSource.noticeFileId || "",
+      fileName: file.fileName || file.name || caseSource.noticeFileName || "",
+      fileType: file.fileType || file.mimeType || file.type || caseSource.noticeFileType || "",
+      mimeType: file.mimeType || file.fileType || file.type || caseSource.noticeFileType || "",
+      fileSize: Number(file.fileSize || file.size || caseSource.noticeFileSize || 0),
+      previewUrl: file.previewUrl || file.fileUrl || file.url || caseSource.noticeFileUrl || "",
+      downloadUrl: file.downloadUrl || file.fileUrl || file.url || caseSource.noticeFileUrl || ""
+    });
+    const rawNoticeFiles = Array.isArray(data.noticeFiles)
+      ? data.noticeFiles
+      : Array.isArray(data.files)
+        ? data.files
+        : [fileSource];
+    const noticeFiles = rawNoticeFiles
+      .map(normalizeNoticeFile)
+      .filter((file) => file.previewUrl || file.downloadUrl || file.fileName);
+    const noticeFile = noticeFiles[0] || normalizeNoticeFile(fileSource);
     return {
       ok: true,
       case: mergedCase,
@@ -1363,6 +1374,7 @@ const noticeService = {
       extraFields: normalizedSubmission.extraFields,
       warnings: normalizedSubmission.warnings,
       noticeFile,
+      noticeFiles,
       latestSubmission: latestSubmission ? { ...latestSubmission, response: normalizedSubmission.submission, responseJson: normalizedSubmission.submission } : null
     };
   },

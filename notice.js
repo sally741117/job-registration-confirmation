@@ -3,14 +3,41 @@ const invalidView = document.querySelector("#invalidView");
 const noticeView = document.querySelector("#noticeView");
 const noticeCaseInfo = document.querySelector("#noticeCaseInfo");
 const noticeFileView = document.querySelector("#noticeFileView");
+const originalFilesView = document.querySelector("#originalFilesView");
 const downloadPdfBtn = document.querySelector("#downloadPdfBtn");
 const downloadOriginalBtn = document.querySelector("#downloadOriginalBtn");
 const pdfTemplate = document.querySelector("#pdfTemplate");
 
 let currentNotice = null;
+let activeLightbox = null;
 
 function setVisible(el, visible) {
   el.classList.toggle("hidden", !visible);
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  }[char]));
+}
+
+function fileKind(file = {}) {
+  const type = String(file.mimeType || file.fileType || "").toLowerCase();
+  const name = String(file.fileName || "").toLowerCase();
+  if (type.includes("pdf") || name.endsWith(".pdf")) return "pdf";
+  if (type.startsWith("image/") || /\.(jpe?g|png|webp)$/i.test(name)) return "image";
+  return "other";
+}
+
+function noticeFiles(record = currentNotice) {
+  const files = Array.isArray(record?.noticeFiles) ? record.noticeFiles : [];
+  const single = record?.noticeFile;
+  const merged = files.length ? files : (single ? [single] : []);
+  return merged.filter((file) => file?.previewUrl || file?.downloadUrl || file?.fileName);
 }
 
 function params() {
@@ -64,6 +91,86 @@ function setOriginalDownload(noticeFile) {
   downloadOriginalBtn.download = noticeFile.fileName || "求才內容";
   downloadOriginalBtn.classList.remove("disabled");
   downloadOriginalBtn.hidden = false;
+}
+
+function closeLightbox() {
+  if (!activeLightbox) return;
+  activeLightbox.remove();
+  activeLightbox = null;
+  document.body.classList.remove("modal-open");
+}
+
+function openLightbox(file) {
+  closeLightbox();
+  const kind = fileKind(file);
+  const title = escapeHtml(file.fileName || "求才登記表");
+  const previewUrl = escapeHtml(file.previewUrl || file.downloadUrl || "");
+  const downloadUrl = escapeHtml(file.downloadUrl || file.previewUrl || "");
+  const content = kind === "image"
+    ? `<div class="file-lightbox-scroll"><img class="file-lightbox-image" src="${previewUrl}" alt="${title}"></div>`
+    : `<iframe class="file-lightbox-pdf" src="${previewUrl}" title="${title}"></iframe><p class="hint">若此瀏覽器無法直接預覽 PDF，請開啟原始檔。</p>`;
+  activeLightbox = document.createElement("div");
+  activeLightbox.className = "file-lightbox";
+  activeLightbox.innerHTML = `
+    <div class="file-lightbox-panel" role="dialog" aria-modal="true" aria-label="${title}">
+      <button class="file-lightbox-close" type="button" aria-label="關閉">×</button>
+      <div class="file-lightbox-header">
+        <strong>${title}</strong>
+        <a class="secondary link-button" href="${downloadUrl}" target="_blank" rel="noreferrer">開啟原始檔</a>
+      </div>
+      ${content}
+    </div>
+  `;
+  document.body.appendChild(activeLightbox);
+  document.body.classList.add("modal-open");
+  activeLightbox.querySelector(".file-lightbox-close").focus();
+}
+
+function renderOriginalFiles(files, caseData) {
+  const firstAvailable = files.find((file) => file.previewUrl || file.downloadUrl);
+  setOriginalDownload(firstAvailable);
+  if (!files.length) {
+    originalFilesView.innerHTML = `<p class="empty">尚未上傳求才登記表。</p>`;
+    return;
+  }
+  originalFilesView.innerHTML = files.map((file, index) => {
+    const kind = fileKind(file);
+    const title = escapeHtml(file.fileName || `求才登記表 ${index + 1}`);
+    const previewUrl = escapeHtml(file.previewUrl || file.downloadUrl || "");
+    const downloadUrl = escapeHtml(file.downloadUrl || file.previewUrl || "");
+    if (!previewUrl && !downloadUrl) {
+      return `<article class="notice-file-card"><strong>${title}</strong><p class="empty">檔案預覽載入失敗</p></article>`;
+    }
+    const preview = kind === "image"
+      ? `<button class="notice-file-preview zoomable" data-file-index="${index}" type="button" aria-label="放大查看 ${title}"><img src="${previewUrl}" alt="${title}"><span>點擊放大查看</span></button>`
+      : kind === "pdf"
+        ? `<div class="notice-file-pdf"><iframe src="${previewUrl}" title="${title}"></iframe><button class="secondary" data-file-index="${index}" type="button">放大查看</button></div>`
+        : `<p class="hint">此檔案格式無法直接預覽。</p>`;
+    return `
+      <article class="notice-file-card">
+        <div class="notice-file-card-title">
+          <strong>${title}</strong>
+          <span>${escapeHtml(file.mimeType || file.fileType || "")}</span>
+        </div>
+        ${preview}
+        <div class="action-row">
+          <a class="secondary link-button" href="${downloadUrl}" target="_blank" rel="noreferrer">開啟求才登記表</a>
+          <a class="secondary link-button" href="${downloadUrl}" download>下載原始檔</a>
+        </div>
+        <p class="file-fallback hidden">檔案預覽載入失敗</p>
+      </article>
+    `;
+  }).join("");
+  originalFilesView.querySelectorAll("img, iframe").forEach((item) => {
+    item.addEventListener("error", () => {
+      const card = item.closest(".notice-file-card");
+      if (card) card.querySelector(".file-fallback")?.classList.remove("hidden");
+      console.warn("原始求才登記表預覽載入失敗", {
+        caseId: caseData.caseId,
+        src: item.getAttribute("src")
+      });
+    });
+  });
 }
 
 function renderTextNotice(caseData) {
@@ -148,6 +255,22 @@ downloadPdfBtn.addEventListener("click", async () => {
   }
 });
 
+originalFilesView.addEventListener("click", (event) => {
+  const trigger = event.target.closest("[data-file-index]");
+  if (!trigger) return;
+  const file = noticeFiles()[Number(trigger.dataset.fileIndex)];
+  if (file) openLightbox(file);
+});
+
+document.addEventListener("click", (event) => {
+  if (!activeLightbox) return;
+  if (event.target === activeLightbox || event.target.closest(".file-lightbox-close")) closeLightbox();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeLightbox();
+});
+
 async function boot() {
   const { caseId, token } = params();
   if (!caseId || !token) {
@@ -162,11 +285,13 @@ async function boot() {
       tokenPresent: Boolean(token),
       apiUrl: CONFIG.GOOGLE_APPS_SCRIPT_URL,
       normalizedCase: currentNotice.caseData,
-      noticeFile: currentNotice.noticeFile
+      noticeFile: currentNotice.noticeFile,
+      noticeFiles: currentNotice.noticeFiles
     });
     assertNoticeData(currentNotice);
     renderCaseInfo(currentNotice.caseData);
-    renderNoticeFile(currentNotice.noticeFile, currentNotice.caseData);
+    renderTextNotice(currentNotice.caseData);
+    renderOriginalFiles(noticeFiles(currentNotice), currentNotice.caseData);
     setVisible(loadingView, false);
     setVisible(invalidView, false);
     setVisible(noticeView, true);

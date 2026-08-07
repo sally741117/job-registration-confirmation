@@ -651,12 +651,49 @@ a.secondary {
   gap: 8px;
 }
 
-.process-steps div {
+.process-steps div,
+.process-step {
   min-height: 66px;
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: #f8fafb;
+}
+
+.process-step {
+  display: block;
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .16s ease, box-shadow .16s ease, background .16s ease, transform .16s ease;
+}
+
+.process-step:hover {
+  border-color: #9bb2bd;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, .08);
+}
+
+.process-step:focus-visible {
+  outline: 3px solid rgba(47, 125, 111, .28);
+  outline-offset: 3px;
+}
+
+.process-step.viewing {
+  border-color: #2f7d6f;
+  box-shadow: 0 0 0 2px rgba(47, 125, 111, .18), 0 8px 18px rgba(15, 23, 42, .08);
+}
+
+.process-step:disabled {
+  cursor: default;
+}
+
+.process-step:disabled:hover {
+  border-color: var(--line);
+  background: #f8fafb;
+  box-shadow: none;
 }
 
 .process-steps b {
@@ -760,6 +797,165 @@ a.secondary {
   border: 1px solid var(--line);
   border-radius: 6px;
   background: #fff;
+}
+
+.notice-original-files {
+  display: grid;
+  gap: 14px;
+}
+
+.notice-file-card {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.notice-file-card-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.notice-file-card-title strong,
+.notice-file-card-title span {
+  overflow-wrap: anywhere;
+}
+
+.notice-file-card-title span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.notice-file-preview {
+  position: relative;
+  display: grid;
+  width: 100%;
+  max-height: 620px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  cursor: zoom-in;
+}
+
+.notice-file-preview img {
+  display: block;
+  width: 100%;
+  max-height: 620px;
+  object-fit: contain;
+}
+
+.notice-file-preview span {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(15, 23, 42, .72);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.notice-file-preview:hover {
+  box-shadow: 0 14px 30px rgba(15, 23, 42, .16);
+}
+
+.notice-file-pdf {
+  display: grid;
+  gap: 10px;
+}
+
+.notice-file-pdf iframe {
+  width: 100%;
+  height: 680px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.file-fallback {
+  margin: 0;
+  color: #92400e;
+  font-weight: 800;
+}
+
+.file-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(15, 23, 42, .78);
+}
+
+.file-lightbox-panel {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  width: min(1120px, 100%);
+  max-height: calc(100vh - 44px);
+  padding: 16px;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .32);
+}
+
+.file-lightbox-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-right: 44px;
+}
+
+.file-lightbox-header strong {
+  overflow-wrap: anywhere;
+}
+
+.file-lightbox-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 38px;
+  height: 38px;
+  min-height: 38px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.file-lightbox-scroll {
+  min-height: 0;
+  overflow: auto;
+}
+
+.file-lightbox-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.file-lightbox-pdf {
+  width: 100%;
+  height: min(78vh, 820px);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.modal-open {
+  overflow: hidden;
 }
 
 .notice-text-preview {
@@ -1004,6 +1200,22 @@ a.secondary {
   .identity-grid,
   .process-steps,
   .version-item { grid-template-columns: 1fr; }
+  .process-step { min-height: 54px; }
+  .notice-file-card { padding: 12px; }
+  .notice-file-card-title,
+  .file-lightbox-header { align-items: stretch; flex-direction: column; }
+  .notice-file-preview,
+  .notice-file-preview img { max-height: 520px; }
+  .notice-file-pdf iframe { height: 420px; }
+  .file-lightbox { padding: 10px; align-items: stretch; }
+  .file-lightbox-panel {
+    width: 100%;
+    max-height: calc(100vh - 20px);
+    padding: 12px;
+    border-radius: 8px;
+  }
+  .file-lightbox-header { padding-right: 44px; }
+  .file-lightbox-pdf { height: 72vh; }
 }
 
 @media (min-width: 721px) {
