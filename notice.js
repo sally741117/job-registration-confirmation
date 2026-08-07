@@ -4,15 +4,13 @@ const noticeView = document.querySelector("#noticeView");
 const noticeCaseInfo = document.querySelector("#noticeCaseInfo");
 const noticeFileView = document.querySelector("#noticeFileView");
 const originalFilesView = document.querySelector("#originalFilesView");
-const downloadPdfBtn = document.querySelector("#downloadPdfBtn");
 const downloadOriginalBtn = document.querySelector("#downloadOriginalBtn");
-const pdfTemplate = document.querySelector("#pdfTemplate");
 
 let currentNotice = null;
-let activeLightbox = null;
+let activeModal = null;
 
 function setVisible(el, visible) {
-  el.classList.toggle("hidden", !visible);
+  if (el) el.classList.toggle("hidden", !visible);
 }
 
 function escapeHtml(value) {
@@ -23,6 +21,14 @@ function escapeHtml(value) {
     '"': "&quot;",
     "'": "&#39;"
   }[char]));
+}
+
+function params() {
+  const search = new URLSearchParams(window.location.search);
+  return {
+    caseId: search.get("caseId") || "",
+    token: search.get("token") || ""
+  };
 }
 
 function fileKind(file = {}) {
@@ -37,15 +43,7 @@ function noticeFiles(record = currentNotice) {
   const files = Array.isArray(record?.noticeFiles) ? record.noticeFiles : [];
   const single = record?.noticeFile;
   const merged = files.length ? files : (single ? [single] : []);
-  return merged.filter((file) => file?.previewUrl || file?.downloadUrl || file?.fileName);
-}
-
-function params() {
-  const search = new URLSearchParams(window.location.search);
-  return {
-    caseId: search.get("caseId") || "",
-    token: search.get("token") || ""
-  };
+  return merged.filter((file) => file?.previewUrl || file?.downloadUrl || file?.fileName || file?.id || file?.driveFileId);
 }
 
 function renderError(message, title = "此通知連結無效或尚未開放") {
@@ -66,64 +64,151 @@ function assertNoticeData(result) {
       workAddress: result?.caseData?.workAddress || "",
       normalized: result
     });
-    throw new Error("案件資料載入不完整，請聯絡承辦人員。");
+    throw new Error("案件資料回傳不完整，請聯絡承辦人員。");
   }
 }
 
 function renderCaseInfo(caseData) {
   noticeCaseInfo.innerHTML = `
-    <div><strong>公司名稱</strong><span>${caseData.companyName}</span></div>
-    <div><strong>求才工作地點</strong><span>${caseData.workAddress}</span></div>
-    <div><strong>求才時間</strong><span>${helpers.formatTaiwanDate(caseData.recruitmentDate) || "待承辦人確認"}</span></div>
-    ${helpers.hasRecruitmentCount(caseData) ? `<div><strong>本次求才人數</strong><span>${caseData.recruitmentCount}人</span></div>` : ""}
+    <div><strong>公司名稱</strong><span>${escapeHtml(caseData.companyName)}</span></div>
+    <div><strong>求才工作地點</strong><span>${escapeHtml(caseData.workAddress)}</span></div>
+    <div><strong>求才時間</strong><span>${escapeHtml(helpers.formatTaiwanDate(caseData.recruitmentDate) || "未提供")}</span></div>
+    ${helpers.hasRecruitmentCount(caseData) ? `<div><strong>本次求才人數</strong><span>${escapeHtml(caseData.recruitmentCount)} 人</span></div>` : ""}
   `;
 }
 
-function setOriginalDownload(noticeFile) {
-  if (!noticeFile?.previewUrl || !noticeFile?.downloadUrl) {
+function pdfData() {
+  return noticeService.pdfData(currentNotice);
+}
+
+function qAndAItems() {
+  return pdfService.qAndA(pdfData()).map((text) => String(text || "").trim()).filter(Boolean);
+}
+
+function closeModal() {
+  if (!activeModal) return;
+  activeModal.remove();
+  activeModal = null;
+  document.body.classList.remove("modal-open");
+}
+
+function openModal({ title, bodyHtml, wide = false }) {
+  closeModal();
+  activeModal = document.createElement("div");
+  activeModal.className = "file-lightbox";
+  activeModal.innerHTML = `
+    <div class="content-modal-panel ${wide ? "wide" : ""}" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+      <button class="file-lightbox-close" type="button" aria-label="關閉">×</button>
+      <header class="content-modal-header"><h2>${escapeHtml(title)}</h2></header>
+      <div class="content-modal-body">${bodyHtml}</div>
+      <footer class="content-modal-footer"><button class="secondary" type="button" data-modal-close>關閉</button></footer>
+    </div>
+  `;
+  document.body.appendChild(activeModal);
+  document.body.classList.add("modal-open");
+  activeModal.querySelector(".file-lightbox-close").focus();
+}
+
+function openFileModal(file) {
+  const kind = fileKind(file);
+  const title = file.fileName || "求才登記表";
+  const previewUrl = escapeHtml(file.previewUrl || file.downloadUrl || "");
+  const downloadUrl = escapeHtml(file.downloadUrl || file.previewUrl || "");
+  const preview = kind === "image"
+    ? `<div class="file-lightbox-scroll"><img class="file-lightbox-image" src="${previewUrl}" alt="${escapeHtml(title)}"></div>`
+    : `<iframe class="file-lightbox-pdf" src="${previewUrl}" title="${escapeHtml(title)}"></iframe><p class="hint">若此瀏覽器無法直接預覽 PDF，請開啟原始檔。</p>`;
+  openModal({
+    title,
+    wide: true,
+    bodyHtml: `
+      <div class="file-lightbox-header inline">
+        <span></span>
+        <a class="secondary link-button" href="${downloadUrl}" target="_blank" rel="noreferrer">開啟原始檔</a>
+      </div>
+      ${preview}
+    `
+  });
+}
+
+function openFullContentModal() {
+  const items = qAndAItems();
+  const bodyHtml = items.length
+    ? `<div class="full-content-list">${items.map((item, index) => `
+        <article>
+          <small>項目 ${index + 1}</small>
+          <p>${escapeHtml(item)}</p>
+        </article>
+      `).join("")}</div>`
+    : `<p class="empty">目前尚無完整求才內容。</p>`;
+  openModal({ title: "完整求才內容", bodyHtml });
+}
+
+function setOriginalDownload(file) {
+  if (!file?.downloadUrl && !file?.previewUrl) {
     downloadOriginalBtn.removeAttribute("href");
     downloadOriginalBtn.removeAttribute("download");
     downloadOriginalBtn.classList.add("disabled");
     downloadOriginalBtn.hidden = true;
     return;
   }
-  downloadOriginalBtn.href = noticeFile.downloadUrl;
-  downloadOriginalBtn.download = noticeFile.fileName || "求才內容";
+  downloadOriginalBtn.href = file.downloadUrl || file.previewUrl;
+  downloadOriginalBtn.download = file.fileName || "求才登記表";
   downloadOriginalBtn.classList.remove("disabled");
   downloadOriginalBtn.hidden = false;
 }
 
-function closeLightbox() {
-  if (!activeLightbox) return;
-  activeLightbox.remove();
-  activeLightbox = null;
-  document.body.classList.remove("modal-open");
-}
-
-function openLightbox(file) {
-  closeLightbox();
-  const kind = fileKind(file);
-  const title = escapeHtml(file.fileName || "求才登記表");
-  const previewUrl = escapeHtml(file.previewUrl || file.downloadUrl || "");
-  const downloadUrl = escapeHtml(file.downloadUrl || file.previewUrl || "");
-  const content = kind === "image"
-    ? `<div class="file-lightbox-scroll"><img class="file-lightbox-image" src="${previewUrl}" alt="${title}"></div>`
-    : `<iframe class="file-lightbox-pdf" src="${previewUrl}" title="${title}"></iframe><p class="hint">若此瀏覽器無法直接預覽 PDF，請開啟原始檔。</p>`;
-  activeLightbox = document.createElement("div");
-  activeLightbox.className = "file-lightbox";
-  activeLightbox.innerHTML = `
-    <div class="file-lightbox-panel" role="dialog" aria-modal="true" aria-label="${title}">
-      <button class="file-lightbox-close" type="button" aria-label="關閉">×</button>
-      <div class="file-lightbox-header">
-        <strong>${title}</strong>
-        <a class="secondary link-button" href="${downloadUrl}" target="_blank" rel="noreferrer">開啟原始檔</a>
+function renderTextNotice(caseData) {
+  const data = pdfData();
+  if (!helpers.latestSubmission(data)) {
+    noticeFileView.innerHTML = `<p class="empty">求才內容尚未建立。</p>`;
+    return;
+  }
+  const summaryRows = [
+    ["產業類別", caseData.industry || "未提供"],
+    ["工作時間", pdfService.workTimeText(data) || "08:00～17:00"],
+    ["公開求才電話", caseData.publicPhone || "未提供"],
+    ["求才工作地點", caseData.workAddress || "未提供"],
+    ["求才時間", helpers.formatTaiwanDate(caseData.recruitmentDate) || "未提供"]
+  ];
+  noticeFileView.innerHTML = `
+    <div class="notice-text-preview summary-only">
+      <dl>
+        ${summaryRows.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("")}
+      </dl>
+      <div class="action-row">
+        <button id="openFullContentBtn" class="primary" type="button">查看完整求才內容</button>
       </div>
-      ${content}
     </div>
   `;
-  document.body.appendChild(activeLightbox);
-  document.body.classList.add("modal-open");
-  activeLightbox.querySelector(".file-lightbox-close").focus();
+  document.querySelector("#openFullContentBtn")?.addEventListener("click", openFullContentModal);
+}
+
+async function hydrateNoticeFiles(files) {
+  const { caseId, token } = params();
+  const hydrated = [];
+  for (const file of files) {
+    const fileId = file.id || file.noticeFileId || file.fileId || file.driveFileId || "";
+    if ((file.previewUrl || "").startsWith("data:")) {
+      hydrated.push(file);
+      continue;
+    }
+    try {
+      const loaded = await noticeService.getNoticeFile(caseId, token, fileId);
+      hydrated.push({ ...file, ...loaded });
+    } catch (error) {
+      console.warn("求才登記表檔案讀取失敗", {
+        caseId,
+        fileName: file.fileName,
+        fileId,
+        code: error?.code || "",
+        message: error?.message || String(error)
+      });
+      hydrated.push({ ...file, previewError: true });
+    }
+  }
+  currentNotice.noticeFiles = hydrated;
+  currentNotice.noticeFile = hydrated[0] || currentNotice.noticeFile || {};
+  return hydrated;
 }
 
 function renderOriginalFiles(files, caseData) {
@@ -138,8 +223,13 @@ function renderOriginalFiles(files, caseData) {
     const title = escapeHtml(file.fileName || `求才登記表 ${index + 1}`);
     const previewUrl = escapeHtml(file.previewUrl || file.downloadUrl || "");
     const downloadUrl = escapeHtml(file.downloadUrl || file.previewUrl || "");
-    if (!previewUrl && !downloadUrl) {
-      return `<article class="notice-file-card"><strong>${title}</strong><p class="empty">檔案預覽載入失敗</p></article>`;
+    if (file.previewError || (!previewUrl && !downloadUrl)) {
+      return `
+        <article class="notice-file-card">
+          <div class="notice-file-card-title"><strong>${title}</strong><span>${escapeHtml(file.mimeType || file.fileType || "")}</span></div>
+          <p class="file-fallback">檔案預覽載入失敗</p>
+        </article>
+      `;
     }
     const preview = kind === "image"
       ? `<button class="notice-file-preview zoomable" data-file-index="${index}" type="button" aria-label="放大查看 ${title}"><img src="${previewUrl}" alt="${title}"><span>點擊放大查看</span></button>`
@@ -155,7 +245,7 @@ function renderOriginalFiles(files, caseData) {
         ${preview}
         <div class="action-row">
           <a class="secondary link-button" href="${downloadUrl}" target="_blank" rel="noreferrer">開啟求才登記表</a>
-          <a class="secondary link-button" href="${downloadUrl}" download>下載原始檔</a>
+          <a class="secondary link-button" href="${downloadUrl}" download="${title}">下載原始檔</a>
         </div>
         <p class="file-fallback hidden">檔案預覽載入失敗</p>
       </article>
@@ -167,114 +257,34 @@ function renderOriginalFiles(files, caseData) {
       if (card) card.querySelector(".file-fallback")?.classList.remove("hidden");
       console.warn("原始求才登記表預覽載入失敗", {
         caseId: caseData.caseId,
-        src: item.getAttribute("src")
+        srcType: item.getAttribute("src")?.startsWith("data:") ? "data-url" : "url"
       });
     });
   });
 }
 
-function renderTextNotice(caseData) {
-  const pdfData = noticeService.pdfData(currentNotice);
-  const questions = pdfService.qAndA(pdfData);
-  if (!helpers.latestSubmission(pdfData)) {
-    noticeFileView.innerHTML = `<p class="empty">求才內容尚未建立。</p>`;
-    return;
-  }
-  noticeFileView.innerHTML = `
-    <div class="notice-text-preview">
-      <dl>
-        <div><dt>產業類別</dt><dd>${caseData.industry || "待承辦人確認"}</dd></div>
-        <div><dt>工作時間</dt><dd>${pdfService.workTimeText(pdfData) || "08:00～17:00"}</dd></div>
-        <div><dt>公開求才電話</dt><dd>${caseData.publicPhone || "待承辦人確認"}</dd></div>
-      </dl>
-      <ul>${questions.map((item) => `<li>${item}</li>`).join("")}</ul>
-    </div>
-  `;
-}
-
-function renderNoticeFile(noticeFile, caseData) {
-  setOriginalDownload(noticeFile);
-  if (!noticeFile?.previewUrl || !noticeFile?.downloadUrl) {
-    renderTextNotice(caseData);
-    return;
-  }
-  const isPdf = noticeFile.fileType === "application/pdf";
-  if (isPdf) {
-    noticeFileView.innerHTML = `
-      <iframe class="notice-pdf-preview large" src="${noticeFile.previewUrl}" title="求才內容 PDF"></iframe>
-      <p class="hint">若 PDF 預覽未顯示，請使用下方「下載原始求才內容」。</p>
-    `;
-  } else {
-    noticeFileView.innerHTML = `
-      <a href="${noticeFile.previewUrl}" target="_blank" rel="noreferrer">
-        <img id="noticePreviewImage" class="notice-image" src="${noticeFile.previewUrl}" alt="求才內容預覽">
-      </a>
-      <p class="hint">點擊圖片可開啟大圖。</p>
-    `;
-    const image = document.querySelector("#noticePreviewImage");
-    image.addEventListener("error", () => {
-      console.warn("求才內容原始附件預覽載入失敗，已改用文字版求才內容。", {
-        caseId: caseData.caseId,
-        fileType: noticeFile.fileType,
-        previewUrl: noticeFile.previewUrl
-      });
-      renderTextNotice(caseData);
-    });
-  }
-}
-
-function validatePdfData(data) {
-  const required = [
-    ["companyName", "公司名稱"],
-    ["contactName", "聯絡人"],
-    ["contactPhone", "聯絡電話"],
-    ["recruitmentDate", "求才時間"],
-    ["industry", "產業類別"],
-    ["workAddress", "工作地點"],
-    ["agencyCompany", "承辦仲介公司"]
-  ];
-  const missing = required.filter(([key]) => !String(data[key] || "").trim()).map(([, label]) => label);
-  if (!helpers.latestSubmission(data)) missing.push("最新公司回覆");
-  if (missing.length) throw new Error(`求才通知單資料尚未完整，請聯絡承辦人員。缺少：${missing.join("、")}`);
-}
-
-downloadPdfBtn.addEventListener("click", async () => {
-  if (!currentNotice) return;
-  downloadPdfBtn.disabled = true;
-  downloadPdfBtn.textContent = "產生中...";
-  try {
-    const pdfData = noticeService.pdfData(currentNotice);
-    validatePdfData(pdfData);
-    await pdfService.download(pdfData, pdfTemplate);
-  } catch (error) {
-    console.error("下載求才通知單 PDF 失敗", error);
-    alert("求才通知單資料尚未完整，請聯絡承辦人員。");
-  } finally {
-    downloadPdfBtn.disabled = false;
-    downloadPdfBtn.textContent = "下載求才通知單 PDF";
-  }
-});
-
 originalFilesView.addEventListener("click", (event) => {
   const trigger = event.target.closest("[data-file-index]");
   if (!trigger) return;
   const file = noticeFiles()[Number(trigger.dataset.fileIndex)];
-  if (file) openLightbox(file);
+  if (file) openFileModal(file);
 });
 
 document.addEventListener("click", (event) => {
-  if (!activeLightbox) return;
-  if (event.target === activeLightbox || event.target.closest(".file-lightbox-close")) closeLightbox();
+  if (!activeModal) return;
+  if (event.target === activeModal || event.target.closest(".file-lightbox-close") || event.target.closest("[data-modal-close]")) {
+    closeModal();
+  }
 });
 
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") closeLightbox();
+  if (event.key === "Escape") closeModal();
 });
 
 async function boot() {
   const { caseId, token } = params();
   if (!caseId || !token) {
-    renderError("此通知連結無效或尚未開放。");
+    renderError("通知連結缺少必要參數。");
     return;
   }
   try {
@@ -285,18 +295,18 @@ async function boot() {
       tokenPresent: Boolean(token),
       apiUrl: CONFIG.GOOGLE_APPS_SCRIPT_URL,
       normalizedCase: currentNotice.caseData,
-      noticeFile: currentNotice.noticeFile,
       noticeFiles: currentNotice.noticeFiles
     });
     assertNoticeData(currentNotice);
     renderCaseInfo(currentNotice.caseData);
     renderTextNotice(currentNotice.caseData);
-    renderOriginalFiles(noticeFiles(currentNotice), currentNotice.caseData);
+    const files = await hydrateNoticeFiles(noticeFiles(currentNotice));
+    renderOriginalFiles(files, currentNotice.caseData);
     setVisible(loadingView, false);
     setVisible(invalidView, false);
     setVisible(noticeView, true);
     noticeService.recordNoticeView(caseId, token).catch((error) => {
-      console.warn("通知查看紀錄寫入失敗", error);
+      console.warn("通知瀏覽紀錄寫入失敗", error);
     });
   } catch (error) {
     console.error("Notice initialization failed:", error);

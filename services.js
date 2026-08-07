@@ -1350,6 +1350,7 @@ const noticeService = {
     });
     const normalizeNoticeFile = (file = {}) => ({
       id: file.id || file.noticeFileId || file.fileId || caseSource.noticeFileId || "",
+      driveFileId: file.driveFileId || caseSource.driveFileId || "",
       fileName: file.fileName || file.name || caseSource.noticeFileName || "",
       fileType: file.fileType || file.mimeType || file.type || caseSource.noticeFileType || "",
       mimeType: file.mimeType || file.fileType || file.type || caseSource.noticeFileType || "",
@@ -1384,13 +1385,17 @@ const noticeService = {
     }
     return this.normalize(await caseService.validateNoticeAccess(caseId, token));
   },
-  async getNoticeFile(caseId, token) {
+  async getNoticeFile(caseId, token, fileId = "") {
     if (CONFIG.ACTIVE_STORAGE_MODE === "remote") {
-      const data = await remoteClient.request("getNoticeFile", { caseId, token }, { timeoutMs: 120000 });
+      const data = await remoteClient.request("getNoticeFile", { caseId, token, fileId }, { timeoutMs: 120000 });
       const file = data?.noticeFile || data?.data?.noticeFile || data?.result?.noticeFile || data;
       return {
+        id: file.id || file.noticeFileId || file.fileId || "",
+        noticeFileId: file.noticeFileId || file.id || file.fileId || "",
+        driveFileId: file.driveFileId || "",
         fileName: file.fileName || "",
         fileType: file.fileType || "",
+        mimeType: file.mimeType || file.fileType || "",
         fileSize: Number(file.fileSize || 0),
         previewUrl: file.previewUrl || file.fileUrl || "",
         downloadUrl: file.downloadUrl || file.fileUrl || ""
