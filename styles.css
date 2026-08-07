@@ -1289,29 +1289,206 @@ a.secondary {
 }
 
 @media (min-width: 721px) {
+  body {
+    font-size: 15.5px;
+    line-height: 1.48;
+  }
+
+  .shell {
+    width: min(1040px, calc(100% - 36px));
+    padding: 20px 0 42px;
+  }
+
   .admin-shell {
     width: min(1180px, calc(100% - 36px));
   }
 
+  h1 {
+    font-size: 38px;
+    line-height: 1.16;
+    margin-bottom: 8px;
+  }
+
+  h2 {
+    font-size: 23px;
+    line-height: 1.24;
+  }
+
+  h3 {
+    font-size: 17px;
+  }
+
+  .hint,
+  .submit-note,
+  .eyebrow {
+    font-size: 14px;
+  }
+
+  .page-header,
+  .success-panel,
+  .loading-panel {
+    padding: 22px 26px;
+    margin-bottom: 16px;
+  }
+
+  .page-header p {
+    margin-bottom: 8px;
+  }
+
+  .card {
+    padding: 22px 26px;
+    margin: 18px 0;
+  }
+
+  .section-title {
+    gap: 10px;
+    margin-bottom: 15px;
+  }
+
+  .section-title span {
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+  }
+
+  .grid {
+    gap: 16px;
+  }
+
+  label,
+  fieldset {
+    margin-bottom: 12px;
+  }
+
+  label,
+  legend {
+    font-size: 15px;
+  }
+
+  input[type="text"],
+  input[type="number"],
+  input[type="date"],
+  input[type="time"],
+  input:not([type]),
+  textarea {
+    min-height: 44px;
+    margin-top: 5px;
+    padding: 8px 11px;
+    font-size: 16px;
+  }
+
+  textarea {
+    min-height: 82px;
+  }
+
+  .choice-row,
+  .choice-grid,
+  .action-row {
+    gap: 8px;
+  }
+
+  .choice-row label,
+  .choice-grid label,
+  .confirm {
+    min-height: 42px;
+    padding: 8px 10px;
+    font-size: 15px;
+  }
+
+  .primary,
+  .secondary,
+  .danger,
+  .link-button,
+  .more-actions summary {
+    min-height: 42px;
+    padding: 9px 14px;
+    font-size: 15px;
+  }
+
+  .mode-banner {
+    margin-top: 12px;
+    padding: 10px 12px;
+    gap: 2px;
+    font-size: 14px;
+  }
+
+  .case-info {
+    gap: 6px;
+    margin: 12px 0 10px;
+    padding: 12px;
+  }
+
+  .case-info div {
+    gap: 8px;
+  }
+
+  .summary {
+    gap: 7px;
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+
+  .summary div {
+    grid-template-columns: 138px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .status {
+    padding: 4px 8px;
+    font-size: 13px;
+  }
+
   .admin-shell .page-header,
   .admin-shell .card {
-    padding: 20px 22px;
+    padding: 18px 22px;
   }
 
   .admin-shell h1 {
-    font-size: 30px;
+    font-size: 36px;
   }
 
   .admin-shell h2 {
-    font-size: 20px;
+    font-size: 22px;
+  }
+
+  .admin-header {
+    padding-top: 18px;
+    padding-bottom: 16px;
+  }
+
+  .admin-header p {
+    margin-bottom: 6px;
+    font-size: 15.5px;
+  }
+
+  .admin-header .mode-banner {
+    margin-top: 9px;
+    padding: 8px 10px;
+  }
+
+  .admin-header .refresh-row {
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .admin-header .refresh-row .secondary,
+  .admin-header .refresh-row .link-button {
+    min-height: 38px;
+    padding: 7px 11px;
+    font-size: 14.5px;
+  }
+
+  .admin-header #connectionResult {
+    min-height: 0;
+    margin-top: 6px;
   }
 
   .admin-list-item {
-    grid-template-columns: 1.15fr 1.05fr .9fr 1fr;
-    gap: 10px 12px;
-    padding: 18px 20px;
+    grid-template-columns: 1.1fr 1fr .85fr 1fr auto;
+    gap: 9px 12px;
+    padding: 12px 14px;
     font-size: 15px;
-    line-height: 1.42;
+    line-height: 1.36;
   }
 
   .admin-list-item strong,
@@ -1324,7 +1501,11 @@ a.secondary {
   }
 
   .admin-list-item .action-row {
+    grid-column: auto;
+    justify-content: flex-end;
+    align-self: center;
     gap: 8px;
+    min-width: 180px;
   }
 
   .admin-list-item .primary,
@@ -1332,8 +1513,115 @@ a.secondary {
   .admin-list-item .danger,
   .admin-list-item .link-button,
   .admin-list-item .more-actions summary {
-    min-height: 42px;
-    padding: 9px 14px;
+    min-height: 40px;
+    padding: 8px 12px;
     font-size: 15px;
+  }
+
+  .case-detail-header {
+    grid-template-columns: 1fr 2fr;
+    gap: 14px;
+    margin-bottom: 14px;
+    padding: 14px 18px;
+  }
+
+  .case-detail-header h1 {
+    font-size: 30px;
+    line-height: 1.18;
+  }
+
+  .case-header-grid,
+  .identity-grid {
+    gap: 8px;
+  }
+
+  .case-header-grid strong,
+  .identity-grid strong {
+    font-size: 13px;
+  }
+
+  .process-steps {
+    gap: 7px;
+  }
+
+  .process-step {
+    min-height: 58px;
+    padding: 8px 9px;
+    font-size: 15px;
+  }
+
+  .process-steps b {
+    width: 22px;
+    height: 22px;
+    margin-bottom: 5px;
+    font-size: 13px;
+  }
+
+  .upload-box {
+    min-height: 108px;
+  }
+
+  .notice-shell .page-header,
+  .notice-shell .card {
+    padding: 22px 26px;
+  }
+
+  .notice-text-preview {
+    gap: 12px;
+  }
+
+  .notice-text-preview dl {
+    gap: 9px;
+  }
+
+  .notice-text-preview dl > div {
+    padding: 9px 11px;
+  }
+
+  .notice-text-preview dt {
+    font-size: 13px;
+  }
+
+  .notice-file-card {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .reminder-card li {
+    margin-bottom: 6px;
+  }
+
+  .content-modal-panel {
+    max-height: min(80vh, 720px);
+  }
+}
+
+@media (min-width: 1025px) {
+  .admin-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 18px;
+    align-items: start;
+  }
+
+  .admin-header .eyebrow,
+  .admin-header h1,
+  .admin-header > p,
+  .admin-header .mode-banner,
+  .admin-header #connectionResult {
+    grid-column: 1;
+  }
+
+  .admin-header .refresh-row {
+    grid-column: 2;
+    grid-row: 1 / span 5;
+    justify-content: flex-end;
+    max-width: 360px;
+    margin-top: 0;
+  }
+
+  .admin-header .refresh-row .hint {
+    flex-basis: 100%;
+    text-align: right;
   }
 }
