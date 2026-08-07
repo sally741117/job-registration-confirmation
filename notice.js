@@ -185,30 +185,54 @@ function renderTextNotice(caseData) {
 
 async function hydrateNoticeFiles(files) {
   const { caseId, token } = params();
-  const hydrated = [];
-  for (const file of files) {
+  const results = await Promise.allSettled(files.map(async (file) => {
     const fileId = file.id || file.noticeFileId || file.fileId || file.driveFileId || "";
     if ((file.previewUrl || "").startsWith("data:")) {
-      hydrated.push(file);
-      continue;
+      return file;
     }
-    try {
-      const loaded = await noticeService.getNoticeFile(caseId, token, fileId);
-      hydrated.push({ ...file, ...loaded });
-    } catch (error) {
-      console.warn("求才登記表檔案讀取失敗", {
-        caseId,
-        fileName: file.fileName,
-        fileId,
-        code: error?.code || "",
-        message: error?.message || String(error)
-      });
-      hydrated.push({ ...file, previewError: true });
-    }
-  }
+    const loaded = await noticeService.getNoticeFile(caseId, token, fileId);
+    return { ...file, ...loaded };
+  }));
+  const hydrated = results.map((result, index) => {
+    if (result.status === "fulfilled") return result.value;
+    const file = files[index];
+    const error = result.reason;
+    const fileId = file.id || file.noticeFileId || file.fileId || file.driveFileId || "";
+    console.warn("求才登記表檔案讀取失敗", {
+      caseId,
+      fileName: file.fileName,
+      fileId,
+      code: error?.code || "",
+      message: error?.message || String(error)
+    });
+    return { ...file, previewError: true };
+  });
   currentNotice.noticeFiles = hydrated;
   currentNotice.noticeFile = hydrated[0] || currentNotice.noticeFile || {};
   return hydrated;
+}
+
+function renderOriginalFilesLoading(files) {
+  setOriginalDownload(null);
+  if (!files.length) {
+    originalFilesView.innerHTML = `<p class="empty">尚未上傳求才登記表。</p>`;
+    return;
+  }
+  originalFilesView.innerHTML = files.map((file, index) => `
+    <article class="notice-file-card" aria-busy="true">
+      <div class="notice-file-card-title">
+        <strong>${escapeHtml(file.fileName || `求才登記表 ${index + 1}`)}</strong>
+        <span>${escapeHtml(file.mimeType || file.fileType || "")}</span>
+      </div>
+      <p class="file-fallback" role="status">檔案載入中……</p>
+    </article>
+  `).join("");
+}
+
+async function loadNoticeFiles(files, caseData) {
+  if (!files.length) return;
+  const hydrated = await hydrateNoticeFiles(files);
+  renderOriginalFiles(hydrated, caseData);
 }
 
 function renderOriginalFiles(files, caseData) {
@@ -300,11 +324,18 @@ async function boot() {
     assertNoticeData(currentNotice);
     renderCaseInfo(currentNotice.caseData);
     renderTextNotice(currentNotice.caseData);
-    const files = await hydrateNoticeFiles(noticeFiles(currentNotice));
-    renderOriginalFiles(files, currentNotice.caseData);
-    setVisible(loadingView, false);
+    const files = noticeFiles(currentNotice);
+    renderOriginalFilesLoading(files);
     setVisible(invalidView, false);
     setVisible(noticeView, true);
+    loadNoticeFiles(files, currentNotice.caseData).catch((error) => {
+      console.warn("求才登記表附件區載入失敗", {
+        caseId,
+        code: error?.code || "",
+        message: error?.message || String(error)
+      });
+      renderOriginalFiles(files.map((file) => ({ ...file, previewError: true })), currentNotice.caseData);
+    });
     noticeService.recordNoticeView(caseId, token).catch((error) => {
       console.warn("通知瀏覽紀錄寫入失敗", error);
     });
@@ -319,6 +350,8 @@ async function boot() {
       NETWORK_ERROR: "網路或 API 錯誤"
     };
     renderError(error.message || "目前無法載入求才通知，請稍後再試或聯絡承辦人員。", titleMap[code] || "求才通知載入失敗");
+  } finally {
+    setVisible(loadingView, false);
   }
 }
 

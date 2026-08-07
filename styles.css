@@ -461,16 +461,39 @@ a.secondary {
 }
 
 .case-item.newly-created {
-  border-color: #15803d;
-  box-shadow: 0 0 0 2px rgba(21, 128, 61, .12);
+  box-shadow: 0 0 0 2px rgba(51, 93, 120, .16);
 }
 
-.case-item.awaiting-review {
+.case-item.case-status-pending,
+.case-item.case-status-revision_open {
+  position: relative;
+  border-color: #8fa9b8;
+  border-left: 7px solid #7898aa;
+  background: #f2f6f8;
+}
+
+.case-item.case-status-submitted,
+.case-item.case-status-preparing_notice {
   position: relative;
   border-color: #e8a23a;
   border-left: 7px solid #e8a23a;
   background: #fff7e8;
   box-shadow: 0 12px 26px rgba(180, 83, 9, .10);
+}
+
+.case-item.case-status-notice_ready {
+  position: relative;
+  border-color: #72ad83;
+  border-left: 7px solid #5f9d73;
+  background: #eef8f1;
+}
+
+.case-item.case-status-deleted,
+.case-item.case-status-invalid {
+  position: relative;
+  border-color: #d97777;
+  border-left: 7px solid #cf5f5f;
+  background: #fff1f2;
 }
 
 .case-item div {
@@ -1072,8 +1095,8 @@ a.secondary {
 }
 
 .status.pending {
-  color: #7c2d12;
-  background: #ffedd5;
+  color: #294a5b;
+  background: #dce7ed;
 }
 
 .status.submitted {
@@ -1084,6 +1107,23 @@ a.secondary {
 .status.revision_open {
   color: #1d4ed8;
   background: #dbeafe;
+}
+
+.admin-list-item .status.submitted,
+.admin-list-item .status.preparing_notice {
+  color: #6f3a05;
+  background: #fed7aa;
+}
+
+.admin-list-item .status.notice_ready {
+  color: #1f5e37;
+  background: #d9f1e0;
+}
+
+.admin-list-item .status.deleted,
+.admin-list-item .status.invalid {
+  color: #991b1b;
+  background: #fee2e2;
 }
 
 .empty {

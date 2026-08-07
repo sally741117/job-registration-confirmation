@@ -207,6 +207,19 @@ const helpers = {
     if (status === CASE_STATUS.deleted) return "已刪除";
     return "待公司填寫";
   },
+  caseCreatedSortValue(item = {}) {
+    const createdAt = Date.parse(item.createdAt || "");
+    if (Number.isFinite(createdAt)) return createdAt;
+    const match = String(item.caseId || "").match(/(\d{4})(\d{2})(\d{2})(?:[-_]?([0-2]\d)([0-5]\d)([0-5]\d))?(?:-(\d+))?$/);
+    if (!match) return Number.NEGATIVE_INFINITY;
+    const [, year, month, day, hour = "00", minute = "00", second = "00", sequence = "0"] = match;
+    return Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)) + Number(sequence);
+  },
+  compareCasesByCreatedAtDesc(a, b) {
+    const difference = this.caseCreatedSortValue(b) - this.caseCreatedSortValue(a);
+    if (Number.isFinite(difference) && difference !== 0) return difference;
+    return String(b.caseId || "").localeCompare(String(a.caseId || ""), "zh-Hant", { numeric: true });
+  },
   modeMessage() {
     if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return "目前為線上模式，資料將儲存至 Google 試算表。";
     return "目前為本機測試模式，資料僅儲存在此瀏覽器。";
@@ -500,6 +513,7 @@ const remoteClient = {
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), options.timeoutMs || this.requestTimeoutMs);
     let response;
+    let text;
     try {
       response = await fetch(CONFIG.GOOGLE_APPS_SCRIPT_URL, {
         method: "POST",
@@ -507,13 +521,13 @@ const remoteClient = {
         body: JSON.stringify(envelope),
         signal: controller.signal
       });
+      text = await response.text();
     } catch (error) {
       if (error.name === "AbortError") throw serviceError("NETWORK_ERROR", "線上服務回應逾時，請稍後重試。", { cause: error });
       throw serviceError("NETWORK_ERROR", error.message || "無法連線到線上服務。", { cause: error });
     } finally {
       window.clearTimeout(timer);
     }
-    const text = await response.text();
     let result = null;
     try {
       result = JSON.parse(text);
@@ -911,7 +925,8 @@ const caseService = {
           noticeUploadedAt: record.noticeUploadedAt || ""
         };
       })
-      .filter((item) => item.status !== CASE_STATUS.deleted && !item.deletedAt);
+      .filter((item) => item.status !== CASE_STATUS.deleted && !item.deletedAt)
+      .sort((a, b) => helpers.compareCasesByCreatedAtDesc(a, b));
     return { ok: true, cases };
   },
   normalizePublicFormCaseResult(result) {
@@ -993,17 +1008,9 @@ const caseService = {
   },
   async listCases() {
     if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.normalizeCaseList(await remoteClient.request("listCases", {}, { timeoutMs: 25000 }));
-    const cases = localStore.readCases().filter((item) => item.status !== CASE_STATUS.deleted && !item.deletedAt).sort((a, b) => {
-      const rank = (item) => {
-        if (item.hasUnreadResponse) return 0;
-        if (helpers.latestSubmission(item) && !item.noticeFileUrl) return 1;
-        if (item.noticeFileUrl) return 2;
-        return 3;
-      };
-      const rankDiff = rank(a) - rank(b);
-      if (rankDiff) return rankDiff;
-      return String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt));
-    });
+    const cases = localStore.readCases()
+      .filter((item) => item.status !== CASE_STATUS.deleted && !item.deletedAt)
+      .sort((a, b) => helpers.compareCasesByCreatedAtDesc(a, b));
     return { ok: true, cases };
   },
   async deleteCase(caseId) {
@@ -1381,13 +1388,13 @@ const noticeService = {
   },
   async getPublicNotice(caseId, token) {
     if (CONFIG.ACTIVE_STORAGE_MODE === "remote") {
-      return this.normalize(await remoteClient.request("getPublicNotice", { caseId, token }));
+      return this.normalize(await remoteClient.request("getPublicNotice", { caseId, token }, { timeoutMs: 10000 }));
     }
     return this.normalize(await caseService.validateNoticeAccess(caseId, token));
   },
   async getNoticeFile(caseId, token, fileId = "") {
     if (CONFIG.ACTIVE_STORAGE_MODE === "remote") {
-      const data = await remoteClient.request("getNoticeFile", { caseId, token, fileId }, { timeoutMs: 120000 });
+      const data = await remoteClient.request("getNoticeFile", { caseId, token, fileId }, { timeoutMs: 10000 });
       const file = data?.noticeFile || data?.data?.noticeFile || data?.result?.noticeFile || data;
       return {
         id: file.id || file.noticeFileId || file.fileId || "",
@@ -1405,7 +1412,7 @@ const noticeService = {
   },
   async recordNoticeView(caseId, token) {
     if (CONFIG.ACTIVE_STORAGE_MODE === "remote") {
-      return this.normalize(await remoteClient.request("recordNoticeView", { caseId, token }));
+      return this.normalize(await remoteClient.request("recordNoticeView", { caseId, token }, { timeoutMs: 10000 }));
     }
     return this.normalize(await caseService.recordNoticeView(caseId, token));
   },
