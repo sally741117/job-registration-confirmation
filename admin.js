@@ -195,7 +195,9 @@ async function renderCaseList(options = {}) {
   const loadSerial = ++caseListLoadSerial;
   try {
   let cases = [];
-  if (!options.silent) caseList.innerHTML = `<p class="empty">案件資料載入中...</p>`;
+  const hasRenderedList = Boolean(caseList.querySelector("[data-case-id], .empty"));
+  if (!options.silent && !hasRenderedList) caseList.innerHTML = `<p class="empty">案件資料載入中...</p>`;
+  caseList.setAttribute("aria-busy", "true");
   try {
     const result = await caseService.listCases();
     if (!Array.isArray(result.cases)) throw new Error("案件列表回傳格式錯誤。");
@@ -252,14 +254,12 @@ async function renderCaseList(options = {}) {
       </article>
     `;
   }).join("");
-  if (highlightedCaseId) {
-    [...caseList.querySelectorAll("[data-case-id]")]
-      .find((element) => element.dataset.caseId === highlightedCaseId)
-      ?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }
   return true;
   } finally {
-    if (loadSerial === caseListLoadSerial) caseListLoading = false;
+    if (loadSerial === caseListLoadSerial) {
+      caseList.setAttribute("aria-busy", "false");
+      caseListLoading = false;
+    }
   }
 }
 
