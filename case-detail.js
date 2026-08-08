@@ -1,7 +1,4 @@
 let currentCase = null;
-let pendingFile = null;
-let pendingFileData = null;
-let pendingUploadCaseId = "";
 let noticeUploadInProgress = false;
 
 const missingView = document.querySelector("#missingView");
@@ -11,42 +8,21 @@ const loadingView = document.querySelector("#loadingView");
 const retryLoadBtn = document.querySelector("#retryLoadBtn");
 const detailView = document.querySelector("#detailView");
 const caseHeader = document.querySelector("#caseHeader");
-const progressPanel = document.querySelector("#progressPanel");
 const latestResponseMeta = document.querySelector("#latestResponseMeta");
 const latestResponseContent = document.querySelector("#latestResponseContent");
 const submissionHistory = document.querySelector("#submissionHistory");
-const editCaseForm = document.querySelector("#editCaseForm");
 const uploadTitle = document.querySelector("#uploadTitle");
 const uploadCaseInfo = document.querySelector("#uploadCaseInfo");
 const noticeDropZone = document.querySelector("#noticeDropZone");
 const noticeFileInput = document.querySelector("#noticeFileInput");
 const fileSummary = document.querySelector("#fileSummary");
 const uploadProgress = document.querySelector("#uploadProgress");
-const confirmUploadBtn = document.querySelector("#confirmUploadBtn");
 const noticeResult = document.querySelector("#noticeResult");
 const noticePreview = document.querySelector("#noticePreview");
 const noticeHistory = document.querySelector("#noticeHistory");
 const openNoticeLinkBtn = document.querySelector("#openNoticeLinkBtn");
 const copyNoticeLinkBtn = document.querySelector("#copyNoticeLinkBtn");
 const deleteNoticeBtn = document.querySelector("#deleteNoticeBtn");
-const deleteCaseBtn = document.querySelector("#deleteCaseBtn");
-const openFormLink = document.querySelector("#openFormLink");
-const copyFormLinkBtn = document.querySelector("#copyFormLinkBtn");
-const reopenBtn = document.querySelector("#reopenBtn");
-const downloadInternalPdfBtn = document.querySelector("#downloadInternalPdfBtn");
-const pdfTemplate = document.querySelector("#pdfTemplate");
-const progressSections = [
-  { key: "basic", selector: "#caseHeader", label: "待公司填寫" },
-  { key: "response", selector: "#latestResponseContent", label: "公司已回覆" },
-  { key: "details", selector: "#editCaseForm", label: "補齊案件資料" },
-  { key: "upload", selector: "#noticeDropZone", label: "上傳求才內容" },
-  { key: "notice", selector: "#noticeResult", label: "公司查看通知" }
-];
-let progressObserver = null;
-let manualProgressActiveUntil = 0;
-
-const $ = (selector, root = document) => root.querySelector(selector);
-const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
 function setVisible(el, visible) {
   if (!el) return;
@@ -85,115 +61,6 @@ function copyText(text) {
   return navigator.clipboard.writeText(text);
 }
 
-function progressTarget(key) {
-  const item = progressSections.find((entry) => entry.key === key);
-  if (!item) return null;
-  const inner = document.querySelector(item.selector);
-  return inner?.closest(".card") || inner;
-}
-
-function scrollToProgressSection(key, focusTarget = true) {
-  const target = progressTarget(key);
-  if (!target) return;
-  const top = target.getBoundingClientRect().top + window.scrollY - 28;
-  manualProgressActiveUntil = Date.now() + 1200;
-  window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
-  progressPanel.querySelectorAll(".process-step").forEach((item) => item.classList.toggle("viewing", item.dataset.target === key));
-  if (focusTarget) {
-    window.setTimeout(() => {
-      target.setAttribute("tabindex", "-1");
-      target.focus({ preventScroll: true });
-      progressPanel.querySelectorAll(".process-step").forEach((item) => item.classList.toggle("viewing", item.dataset.target === key));
-    }, 350);
-  }
-}
-
-function setupProgressObserver() {
-  if (progressObserver) progressObserver.disconnect();
-  const targets = progressSections.map((item) => ({ key: item.key, element: progressTarget(item.key) })).filter((item) => item.element);
-  if (!targets.length) return;
-  progressObserver = new IntersectionObserver((entries) => {
-    const visible = entries
-      .filter((entry) => entry.isIntersecting)
-      .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-    if (!visible) return;
-    if (Date.now() < manualProgressActiveUntil) return;
-    const key = visible.target.dataset.progressSection;
-    progressPanel.querySelectorAll(".process-step").forEach((item) => item.classList.toggle("viewing", item.dataset.target === key));
-  }, { rootMargin: "-20% 0px -55% 0px", threshold: [0.05, 0.2, 0.45] });
-  targets.forEach(({ key, element }) => {
-    element.dataset.progressSection = key;
-    progressObserver.observe(element);
-  });
-}
-
-function clearErrors(root = document) {
-  $$(".error-text", root).forEach((el) => el.remove());
-  $$(".field-error", root).forEach((el) => el.classList.remove("field-error"));
-}
-
-function addError(target, message) {
-  target.classList.add("field-error");
-  const error = document.createElement("div");
-  error.className = "error-text";
-  error.textContent = message;
-  (target.closest("label") || target.parentElement).appendChild(error);
-}
-
-function selected(name, root = editCaseForm) {
-  return $(`[name="${name}"]:checked`, root)?.value || "";
-}
-
-function collectCaseInput(root = editCaseForm) {
-  return {
-    companyName: root.companyName.value.trim(),
-    workAddress: root.workAddress.value.trim(),
-    recruitmentCount: root.recruitmentCount.value.trim(),
-    contactName: root.contactName.value.trim(),
-    contactPhone: root.contactPhone.value.trim(),
-    extension: root.extension.value.trim(),
-    recruitmentDate: root.recruitmentDate.value,
-    industry: root.industry.value.trim(),
-    salaryMin: root.salaryMin.value.trim(),
-    salaryMax: root.salaryMax.value.trim(),
-    publicPhone: root.publicPhone.value.trim(),
-    agencyCompany: selected("agencyCompany", root)
-  };
-}
-
-function validateCaseInput(input, root = editCaseForm) {
-  clearErrors(root);
-  let valid = true;
-  const fail = (target, message) => {
-    valid = false;
-    addError(target, message);
-  };
-  if (!input.companyName) fail(root.companyName, "請填寫公司名稱。");
-  if (!input.workAddress) fail(root.workAddress, "請填寫工作地點。");
-  if (input.recruitmentCount && !helpers.isPositiveInteger(input.recruitmentCount)) fail(root.recruitmentCount, "求才人數有輸入時只能是正整數。");
-  if (input.salaryMin && !/^\d+$/.test(input.salaryMin)) fail(root.salaryMin, "薪資下限只能輸入數字。");
-  if (input.salaryMax && !/^\d+$/.test(input.salaryMax)) fail(root.salaryMax, "薪資上限只能輸入數字。");
-  if (input.salaryMin && input.salaryMax && Number(input.salaryMin) > Number(input.salaryMax)) fail(root.salaryMax, "薪資上限不可低於薪資下限。");
-  return valid;
-}
-
-function fillEditForm(caseRecord) {
-  editCaseForm.caseId.value = caseRecord.caseId;
-  editCaseForm.companyName.value = caseRecord.companyName || "";
-  editCaseForm.workAddress.value = caseRecord.workAddress || "";
-  editCaseForm.recruitmentCount.value = helpers.hasRecruitmentCount(caseRecord) ? caseRecord.recruitmentCount : "";
-  editCaseForm.contactName.value = caseRecord.contactName || "";
-  editCaseForm.contactPhone.value = caseRecord.contactPhone || "";
-  editCaseForm.extension.value = caseRecord.extension || "";
-  editCaseForm.recruitmentDate.value = caseRecord.recruitmentDate || "";
-  editCaseForm.industry.value = caseRecord.industry || "";
-  editCaseForm.salaryMin.value = Number(caseRecord.salaryMin) > 0 ? caseRecord.salaryMin : "";
-  editCaseForm.salaryMax.value = Number(caseRecord.salaryMax) > 0 ? caseRecord.salaryMax : "";
-  editCaseForm.publicPhone.value = caseRecord.publicPhone || "";
-  const agency = $(`[name="agencyCompany"][value="${caseRecord.agencyCompany}"]`, editCaseForm);
-  if (agency) agency.checked = true;
-}
-
 function rowsHtml(rows) {
   return rows.map(([key, value]) => `<div><strong>${key}</strong><span>${value || ""}</span></div>`).join("");
 }
@@ -229,24 +96,6 @@ function renderHeader() {
       <div><strong>查看回覆時間</strong><span>${helpers.displayDateTime(currentCase.responseViewedAt) || "尚未查看"}</span></div>
     </div>
   `;
-}
-
-function renderProgress() {
-  const steps = [
-    ["待公司填寫", currentCase.status !== CASE_STATUS.pending],
-    ["公司已回覆", Boolean(helpers.latestSubmission(currentCase))],
-    ["補齊案件資料", helpers.hasCompleteSalary(currentCase) || currentCase.status === CASE_STATUS.notice_ready],
-    ["上傳求才內容", Boolean(currentCase.noticeFileUrl)],
-    ["公司查看通知", Boolean(currentCase.noticeViewed)]
-  ];
-  progressPanel.innerHTML = steps.map(([label, done], index) => {
-    const item = progressSections[index];
-    const hasTarget = Boolean(progressTarget(item.key));
-    return `<button class="process-step ${done ? "done" : ""}" data-target="${item.key}" type="button" ${hasTarget ? "" : "disabled"}><b>${index + 1}</b><span>${item.label || label}</span></button>`;
-  }).join("");
-  const hasSubmission = Boolean(helpers.latestSubmission(currentCase));
-  reopenBtn.disabled = !hasSubmission || currentCase.status === CASE_STATUS.revision_open;
-  downloadInternalPdfBtn.disabled = !hasSubmission;
 }
 
 function renderLatestResponse() {
@@ -290,7 +139,6 @@ function renderUploadSection() {
     <span>本次上傳的求才內容將綁定至此案件及此筆公司回覆，提供公司後續查看與下載。</span>
     <span>預設對應回覆：${latest?.submissionId || "尚未綁定"}</span>
   `;
-  confirmUploadBtn.disabled = false;
 }
 
 function renderNoticeData() {
@@ -325,24 +173,14 @@ function renderNoticeData() {
     : "";
 }
 
-function renderViewRecord() {
-  viewRecord.innerHTML = rowsHtml([
-    ["查看狀態", currentCase.noticeViewed ? "已查看" : "尚未查看"],
-    ["首次查看時間", helpers.displayDateTime(currentCase.firstViewedAt) || "尚未查看"],
-    ["最後查看時間", helpers.displayDateTime(currentCase.lastViewedAt) || "尚未查看"],
-    ["查看次數", currentCase.viewCount ? `${currentCase.viewCount}次` : "0次"]
-  ]);
-}
-
-function resetPendingFile() {
-  pendingFile = null;
-  pendingFileData = null;
-  pendingUploadCaseId = "";
+function resetUploadState(clearMessage = true) {
   noticeFileInput.value = "";
+  noticeFileInput.disabled = false;
+  noticeDropZone.classList.remove("dragging", "uploading");
+  noticeDropZone.removeAttribute("aria-busy");
   fileSummary.innerHTML = "";
   setVisible(fileSummary, false);
-  setVisible(confirmUploadBtn, false);
-  uploadProgress.textContent = "";
+  if (clearMessage) uploadProgress.textContent = "";
 }
 
 function fileToDataUrl(file) {
@@ -354,29 +192,24 @@ function fileToDataUrl(file) {
   });
 }
 
-async function prepareFile(file) {
-  const latest = helpers.latestSubmission(currentCase);
+async function uploadFile(file) {
   const allowed = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
   if (!file || !allowed.includes(file.type)) {
+    resetUploadState(false);
     uploadProgress.textContent = "請選擇 JPG、PNG、WEBP 或 PDF 檔案。";
     return;
   }
-  pendingFile = file;
-  pendingUploadCaseId = currentCase.caseId;
-  pendingFileData = { name: file.name, type: file.type, size: file.size, blob: file };
-  if (CONFIG.ACTIVE_STORAGE_MODE === "remote") {
-    try {
-      pendingFileData.dataUrl = await fileToDataUrl(file);
-    } catch (error) {
-      console.error("FileReader 讀取求才內容檔案失敗", { fileName: file.name, fileSize: file.size, error });
-      uploadProgress.textContent = "檔案讀取失敗，請重新選擇檔案。";
-      resetPendingFile();
-      return;
-    }
-  }
+  if (!currentCase?.caseId || noticeUploadInProgress) return;
+  const uploadCaseId = currentCase.caseId;
+  const latest = helpers.latestSubmission(currentCase);
+  const fileData = { name: file.name, type: file.type, size: file.size, blob: file };
+  noticeUploadInProgress = true;
+  noticeFileInput.disabled = true;
+  noticeDropZone.classList.add("uploading");
+  noticeDropZone.setAttribute("aria-busy", "true");
   fileSummary.innerHTML = rowsHtml([
     ["公司名稱", currentCase.companyName],
-    ["案件編號", currentCase.caseId],
+    ["案件編號", uploadCaseId],
     ["公司送出時間", helpers.displayDateTime(latest?.submittedAt) || "尚未送出"],
     ["對應回覆", latest?.submissionId || "尚未綁定"],
     ["上傳檔名", file.name],
@@ -384,32 +217,21 @@ async function prepareFile(file) {
     ["檔案大小", helpers.fileSizeText(file.size)]
   ]);
   setVisible(fileSummary, true);
-  setVisible(confirmUploadBtn, true);
-  uploadProgress.textContent = CONFIG.ACTIVE_STORAGE_MODE === "local"
-    ? "已選擇檔案。本機測試模式會將檔案暫存在此瀏覽器。"
-    : "已選擇檔案。確認後會上傳至 Google Drive。";
-}
-
-async function uploadPendingFile() {
-  if (!pendingFileData || !pendingUploadCaseId || noticeUploadInProgress) return;
-  noticeUploadInProgress = true;
-  confirmUploadBtn.disabled = true;
-  uploadProgress.textContent = "上傳中...";
+  uploadProgress.textContent = "正在準備檔案...";
   try {
+    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") fileData.dataUrl = await fileToDataUrl(file);
+    uploadProgress.textContent = "上傳中...";
     const pageCaseId = helpers.getCaseIdFromUrl();
     const latestRecord = await caseService.getCase(pageCaseId);
-    const latest = helpers.latestSubmission(latestRecord);
-    if (!latestRecord || latestRecord.caseId !== pendingUploadCaseId || pageCaseId !== pendingUploadCaseId) {
-      resetPendingFile();
-      uploadProgress.textContent = "目前案件已切換，請重新選擇檔案。";
-      return;
-    }
-    currentCase = await caseService.uploadNoticeFile(latestRecord.caseId, pendingFileData, {
-      expectedCaseId: pendingUploadCaseId,
-      submissionId: latest?.submissionId || "",
+    if (!latestRecord || latestRecord.caseId !== uploadCaseId || pageCaseId !== uploadCaseId) throw new Error("目前案件已切換，請重新選擇檔案。");
+    const latestSubmission = helpers.latestSubmission(latestRecord);
+    currentCase = await caseService.uploadNoticeFile(latestRecord.caseId, fileData, {
+      expectedCaseId: uploadCaseId,
+      submissionId: latestSubmission?.submissionId || "",
       uploadedBy: "仲介端"
     });
-    resetPendingFile();
+    fileSummary.innerHTML = "";
+    setVisible(fileSummary, false);
     renderAll();
     uploadProgress.textContent = "求才內容已成功上傳。";
   } catch (error) {
@@ -417,44 +239,19 @@ async function uploadPendingFile() {
     uploadProgress.textContent = error.message || "上傳失敗，請重新選擇檔案。";
   } finally {
     noticeUploadInProgress = false;
-    confirmUploadBtn.disabled = false;
+    noticeFileInput.disabled = false;
+    noticeFileInput.value = "";
+    noticeDropZone.classList.remove("uploading");
+    noticeDropZone.removeAttribute("aria-busy");
   }
-}
-
-async function reloadCase() {
-  const caseId = helpers.getCaseIdFromUrl();
-  if (!caseId) {
-    missingTitle.textContent = "缺少案件編號";
-    missingText.textContent = "請從案件列表進入案件詳情，或確認網址包含 caseId。";
-    setVisible(missingView, true);
-    return;
-  }
-  currentCase = await caseService.getCase(caseId);
-  if (!currentCase) {
-    missingTitle.textContent = "案件不存在";
-    missingText.textContent = "找不到此案件，請返回管理後台確認案件編號。";
-    setVisible(missingView, true);
-    return;
-  }
-  if (currentCase.hasUnreadResponse) {
-    currentCase = await caseService.markResponseViewed(currentCase.caseId);
-  }
-  resetPendingFile();
-  fillEditForm(currentCase);
-  openFormLink.href = helpers.formUrl(currentCase);
-  setVisible(detailView, true);
-  renderAll();
 }
 
 function renderAll() {
   renderHeader();
-  renderProgress();
   renderLatestResponse();
   renderSubmissionHistory();
   renderUploadSection();
   renderNoticeData();
-  renderViewRecord();
-  setupProgressObserver();
 }
 
 async function initDetailPage() {
@@ -480,9 +277,7 @@ async function initDetailPage() {
         console.warn("回覆查看狀態更新失敗", markError);
       }
     }
-    resetPendingFile();
-    fillEditForm(currentCase);
-    openFormLink.href = helpers.formUrl(currentCase);
+    resetUploadState();
     renderAll();
     setVisible(missingView, false);
     setVisible(detailView, true);
@@ -499,16 +294,7 @@ async function initDetailPage() {
   }
 }
 
-editCaseForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const input = collectCaseInput();
-  if (!validateCaseInput(input)) return;
-  currentCase = await caseService.updateCaseDetails(currentCase.caseId, input);
-  fillEditForm(currentCase);
-  renderAll();
-});
-
-noticeFileInput.addEventListener("change", () => prepareFile(noticeFileInput.files[0]));
+noticeFileInput.addEventListener("change", () => uploadFile(noticeFileInput.files[0]));
 noticeDropZone.addEventListener("dragover", (event) => {
   event.preventDefault();
   noticeDropZone.classList.add("dragging");
@@ -517,46 +303,13 @@ noticeDropZone.addEventListener("dragleave", () => noticeDropZone.classList.remo
 noticeDropZone.addEventListener("drop", (event) => {
   event.preventDefault();
   noticeDropZone.classList.remove("dragging");
-  prepareFile(event.dataTransfer.files[0]);
+  uploadFile(event.dataTransfer.files[0]);
 });
-confirmUploadBtn.addEventListener("click", uploadPendingFile);
-copyFormLinkBtn.addEventListener("click", () => copyText(helpers.formUrl(currentCase)));
 copyNoticeLinkBtn.addEventListener("click", () => currentCase.noticeFileUrl && copyText(helpers.buildNoticeUrl(currentCase)));
-reopenBtn.addEventListener("click", async () => {
-  currentCase = await caseService.reopenForRevision(currentCase.caseId);
-  resetPendingFile();
-  renderAll();
-});
 deleteNoticeBtn.addEventListener("click", async () => {
   currentCase = await caseService.deleteNoticeFile(currentCase.caseId);
-  resetPendingFile();
+  resetUploadState();
   renderAll();
-});
-deleteCaseBtn.addEventListener("click", async () => {
-  if (!currentCase) return;
-  const confirmed = await deleteCaseDialog.confirm(currentCase);
-  if (!confirmed) return;
-  try {
-    await caseService.deleteCase(currentCase.caseId);
-    window.location.href = "./admin.html";
-  } catch (error) {
-    console.error("刪除案件失敗", error);
-    alert(error.message || "刪除案件失敗，請稍後再試。");
-  }
-});
-downloadInternalPdfBtn.addEventListener("click", async () => {
-  const latest = helpers.latestSubmission(currentCase);
-  if (!latest) {
-    uploadProgress.textContent = "尚未有公司回覆，無法產生內部預覽。";
-    return;
-  }
-  await pdfService.download(submissionService.mergeCaseAndResponse(currentCase), pdfTemplate);
-});
-
-progressPanel.addEventListener("click", (event) => {
-  const button = event.target.closest(".process-step");
-  if (!button || button.disabled) return;
-  scrollToProgressSection(button.dataset.target);
 });
 
 retryLoadBtn?.addEventListener("click", initDetailPage);

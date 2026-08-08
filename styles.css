@@ -931,6 +931,12 @@ a.secondary {
   background: var(--soft);
 }
 
+.upload-box.uploading {
+  cursor: wait;
+  opacity: .72;
+  pointer-events: none;
+}
+
 .upload-box input {
   display: none;
 }
