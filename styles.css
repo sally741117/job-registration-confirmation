@@ -385,9 +385,16 @@ input[type="radio"], input[type="checkbox"] {
   display: grid;
   grid-template-columns: 150px 1fr;
   gap: 12px;
+  min-width: 0;
 }
 
 .summary strong { color: var(--muted); }
+
+.summary span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 
 .primary, .secondary, .danger {
   min-height: 48px;
