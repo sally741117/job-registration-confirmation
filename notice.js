@@ -8,6 +8,7 @@ const downloadOriginalBtn = document.querySelector("#downloadOriginalBtn");
 
 let currentNotice = null;
 let activeModal = null;
+let hasAutoOpenedNotice = false;
 
 function setVisible(el, visible) {
   if (el) el.classList.toggle("hidden", !visible);
@@ -133,14 +134,27 @@ function openFileModal(file) {
 function openFullContentModal() {
   const items = qAndAItems();
   const bodyHtml = items.length
-    ? `<div class="full-content-list">${items.map((item, index) => `
-        <article>
-          <small>項目 ${index + 1}</small>
-          <p>${escapeHtml(item)}</p>
-        </article>
-      `).join("")}</div>`
+    ? `<ul class="full-content-list">${items.map((item) => {
+        const separatorIndex = item.lastIndexOf("：");
+        const hasAnswer = separatorIndex > -1 && separatorIndex < item.length - 1;
+        const question = hasAnswer ? item.slice(0, separatorIndex + 1) : item;
+        const answer = hasAnswer ? item.slice(separatorIndex + 1).trim() : "";
+        const normalizedAnswer = answer.replace(/[。．.]+$/u, "").trim();
+        return `
+          <li>
+            <span class="notice-question">${escapeHtml(question)}</span>
+            ${answer ? `<span class="notice-answer ${normalizedAnswer === "是" ? "is-yes" : ""}">${escapeHtml(answer)}</span>` : ""}
+          </li>
+        `;
+      }).join("")}</ul>`
     : `<p class="empty">目前尚無完整求才內容。</p>`;
-  openModal({ title: "完整求才內容", bodyHtml });
+  openModal({ title: "求才通知", bodyHtml });
+}
+
+function autoOpenFullContentModalOnce() {
+  if (hasAutoOpenedNotice) return;
+  hasAutoOpenedNotice = true;
+  openFullContentModal();
 }
 
 function setOriginalDownload(file) {
@@ -176,7 +190,7 @@ function renderTextNotice(caseData) {
         ${summaryRows.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("")}
       </dl>
       <div class="action-row">
-        <button id="openFullContentBtn" class="primary" type="button">查看完整求才內容</button>
+        <button id="openFullContentBtn" class="primary" type="button">再次查看求才通知</button>
       </div>
     </div>
   `;
@@ -328,6 +342,7 @@ async function boot() {
     renderOriginalFilesLoading(files);
     setVisible(invalidView, false);
     setVisible(noticeView, true);
+    autoOpenFullContentModalOnce();
     loadNoticeFiles(files, currentNotice.caseData).catch((error) => {
       console.warn("求才登記表附件區載入失敗", {
         caseId,
