@@ -133,10 +133,14 @@ function openFullContentModal() {
         const question = hasAnswer ? item.slice(0, separatorIndex + 1) : item;
         const answer = hasAnswer ? item.slice(separatorIndex + 1).trim() : "";
         const normalizedAnswer = answer.replace(/[。．.]+$/u, "").trim();
+        const isNoRefusalAnswer = normalizedAnswer === "好" && /(?:不得拒絕|請勿直接拒絕)/u.test(question);
+        const questionHtml = isNoRefusalAnswer
+          ? escapeHtml(question).replace(/(不得拒絕|請勿直接拒絕)/u, '<span class="notice-emphasis">$1</span>')
+          : escapeHtml(question);
         return `
           <li>
-            <span class="notice-question">${escapeHtml(question)}</span>
-            ${answer ? `<span class="notice-answer ${normalizedAnswer === "是" ? "is-yes" : ""}">${escapeHtml(answer)}</span>` : ""}
+            <span class="notice-question">${questionHtml}</span>
+            ${answer ? `<span class="notice-answer ${normalizedAnswer === "是" || isNoRefusalAnswer ? "is-emphasis" : ""}">${escapeHtml(answer)}</span>` : ""}
           </li>
         `;
       }).join("")}</ul>`

@@ -1118,7 +1118,8 @@ a.secondary {
   color: #1f2937;
 }
 
-.notice-answer.is-yes {
+.notice-answer.is-emphasis,
+.notice-emphasis {
   color: #b91c1c;
   font-weight: 700;
 }
