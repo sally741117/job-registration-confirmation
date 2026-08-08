@@ -1122,12 +1122,6 @@ a.secondary {
   font-weight: 700;
 }
 
-.full-content-list li.is-location .notice-question,
-.full-content-list li.is-location .notice-answer {
-  color: #b91c1c;
-  font-weight: 700;
-}
-
 .notice-modal-reminders {
   margin-top: 22px;
   padding-top: 18px;

@@ -11,12 +11,11 @@ let activeModal = null;
 let hasAutoOpenedNotice = false;
 
 const NOTICE_REMINDERS = [
-  "就業中心可能會致電確認求才內容。",
+  "就業中心會致電確認求才內容。",
   "請依上方求才內容回答承辦人員問題。",
-  "若承辦人員說明的資料正確，請回答「是」。",
+  "若承辦人員說明的資料，請回答「是」。",
   "若有就業中心推薦求職者，請勿直接拒絕。",
-  "請留下求職者履歷表及就業中心推介卡。",
-  "收到履歷或推介卡後，請儘快通知本公司承辦人員。",
+  "若接到求職者面試需求，可儘快通知移工仲介承辦人員，由仲介代為處理。",
   "若求才內容有任何疑問，請先聯絡負責業務。"
 ];
 
@@ -148,10 +147,13 @@ function openFullContentModal() {
         const questionHtml = isNoRefusalAnswer
           ? escapeHtml(question).replace(/(不得拒絕|請勿直接拒絕)/u, '<span class="notice-emphasis">$1</span>')
           : escapeHtml(question);
+        const answerHtml = isWorkLocation
+          ? `<span class="notice-answer is-emphasis">${escapeHtml(normalizedAnswer)}</span>${escapeHtml(answer.slice(normalizedAnswer.length))}`
+          : `<span class="notice-answer ${normalizedAnswer === "是" || isNoRefusalAnswer ? "is-emphasis" : ""}">${escapeHtml(answer)}</span>`;
         return `
-          <li class="${isWorkLocation ? "is-location" : ""}">
+          <li>
             <span class="notice-question">${questionHtml}</span>
-            ${answer ? `<span class="notice-answer ${normalizedAnswer === "是" || isNoRefusalAnswer || isWorkLocation ? "is-emphasis" : ""}">${escapeHtml(answer)}</span>` : ""}
+            ${answer ? answerHtml : ""}
           </li>
         `;
       }).join("")}</ul>`
@@ -159,7 +161,7 @@ function openFullContentModal() {
   const remindersHtml = `
     <section class="notice-modal-reminders" aria-labelledby="noticeRemindersTitle">
       <h3 id="noticeRemindersTitle">接下來請您留意</h3>
-      <ol>${NOTICE_REMINDERS.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ol>
+      <ol>${NOTICE_REMINDERS.map((item) => `<li>${escapeHtml(item).replace(/(請勿直接拒絕)/u, '<span class="notice-emphasis">$1</span>')}</li>`).join("")}</ol>
     </section>
   `;
   const bodyHtml = `${contentHtml}${remindersHtml}`;
