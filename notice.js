@@ -10,6 +10,16 @@ let currentNotice = null;
 let activeModal = null;
 let hasAutoOpenedNotice = false;
 
+const NOTICE_REMINDERS = [
+  "就業中心可能會致電確認求才內容。",
+  "請依上方求才內容回答承辦人員問題。",
+  "若承辦人員說明的資料正確，請回答「是」。",
+  "若有就業中心推薦求職者，請勿直接拒絕。",
+  "請留下求職者履歷表及就業中心推介卡。",
+  "收到履歷或推介卡後，請儘快通知本公司承辦人員。",
+  "若求才內容有任何疑問，請先聯絡負責業務。"
+];
+
 function setVisible(el, visible) {
   if (el) el.classList.toggle("hidden", !visible);
 }
@@ -126,25 +136,33 @@ function openFileModal(file) {
 
 function openFullContentModal() {
   const items = qAndAItems();
-  const bodyHtml = items.length
+  const contentHtml = items.length
     ? `<ul class="full-content-list">${items.map((item) => {
         const separatorIndex = item.lastIndexOf("：");
         const hasAnswer = separatorIndex > -1 && separatorIndex < item.length - 1;
         const question = hasAnswer ? item.slice(0, separatorIndex + 1) : item;
         const answer = hasAnswer ? item.slice(separatorIndex + 1).trim() : "";
         const normalizedAnswer = answer.replace(/[。．.]+$/u, "").trim();
+        const isWorkLocation = /^求才(?:工作)?地點[：:]/u.test(question.trim());
         const isNoRefusalAnswer = normalizedAnswer === "好" && /(?:不得拒絕|請勿直接拒絕)/u.test(question);
         const questionHtml = isNoRefusalAnswer
           ? escapeHtml(question).replace(/(不得拒絕|請勿直接拒絕)/u, '<span class="notice-emphasis">$1</span>')
           : escapeHtml(question);
         return `
-          <li>
+          <li class="${isWorkLocation ? "is-location" : ""}">
             <span class="notice-question">${questionHtml}</span>
-            ${answer ? `<span class="notice-answer ${normalizedAnswer === "是" || isNoRefusalAnswer ? "is-emphasis" : ""}">${escapeHtml(answer)}</span>` : ""}
+            ${answer ? `<span class="notice-answer ${normalizedAnswer === "是" || isNoRefusalAnswer || isWorkLocation ? "is-emphasis" : ""}">${escapeHtml(answer)}</span>` : ""}
           </li>
         `;
       }).join("")}</ul>`
     : `<p class="empty">目前尚無完整求才內容。</p>`;
+  const remindersHtml = `
+    <section class="notice-modal-reminders" aria-labelledby="noticeRemindersTitle">
+      <h3 id="noticeRemindersTitle">接下來請您留意</h3>
+      <ol>${NOTICE_REMINDERS.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ol>
+    </section>
+  `;
+  const bodyHtml = `${contentHtml}${remindersHtml}`;
   openModal({ title: "求才通知", bodyHtml });
 }
 

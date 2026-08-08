@@ -755,9 +755,7 @@ a.secondary {
 }
 
 .case-detail-header {
-  position: sticky;
-  top: 0;
-  z-index: 10;
+  position: static;
   display: grid;
   grid-template-columns: 1.1fr 2fr;
   gap: 18px;
@@ -1124,6 +1122,36 @@ a.secondary {
   font-weight: 700;
 }
 
+.full-content-list li.is-location .notice-question,
+.full-content-list li.is-location .notice-answer {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.notice-modal-reminders {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.notice-modal-reminders h3 {
+  margin: 0 0 12px;
+  font-size: 20px;
+}
+
+.notice-modal-reminders ol {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 1.6rem;
+}
+
+.notice-modal-reminders li {
+  padding-left: 3px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
 .file-lightbox-header {
   display: flex;
   align-items: center;
@@ -1475,6 +1503,9 @@ a.secondary {
     gap: 14px;
     padding-left: 1.25rem;
   }
+  .notice-modal-reminders { margin-top: 18px; padding-top: 15px; }
+  .notice-modal-reminders h3 { font-size: 18px; }
+  .notice-modal-reminders ol { gap: 9px; padding-left: 1.45rem; }
   .file-lightbox-header { padding-right: 44px; }
   .file-lightbox-pdf { height: 72vh; }
 }
@@ -1776,10 +1807,6 @@ a.secondary {
   .notice-file-card {
     padding: 12px;
     gap: 10px;
-  }
-
-  .reminder-card li {
-    margin-bottom: 6px;
   }
 
   .content-modal-panel {
