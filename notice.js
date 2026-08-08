@@ -114,20 +114,13 @@ function openFileModal(file) {
   const kind = fileKind(file);
   const title = file.fileName || "求才登記表";
   const previewUrl = escapeHtml(file.previewUrl || file.downloadUrl || "");
-  const downloadUrl = escapeHtml(file.downloadUrl || file.previewUrl || "");
   const preview = kind === "image"
     ? `<div class="file-lightbox-scroll"><img class="file-lightbox-image" src="${previewUrl}" alt="${escapeHtml(title)}"></div>`
-    : `<iframe class="file-lightbox-pdf" src="${previewUrl}" title="${escapeHtml(title)}"></iframe><p class="hint">若此瀏覽器無法直接預覽 PDF，請開啟原始檔。</p>`;
+    : `<iframe class="file-lightbox-pdf" src="${previewUrl}" title="${escapeHtml(title)}"></iframe><p class="hint">若此瀏覽器無法直接預覽 PDF，請使用頁面下方的「開啟／下載原始求才登記表」。</p>`;
   openModal({
     title,
     wide: true,
-    bodyHtml: `
-      <div class="file-lightbox-header inline">
-        <span></span>
-        <a class="secondary link-button" href="${downloadUrl}" target="_blank" rel="noreferrer">開啟原始檔</a>
-      </div>
-      ${preview}
-    `
+    bodyHtml: preview
   });
 }
 
@@ -160,13 +153,11 @@ function autoOpenFullContentModalOnce() {
 function setOriginalDownload(file) {
   if (!file?.downloadUrl && !file?.previewUrl) {
     downloadOriginalBtn.removeAttribute("href");
-    downloadOriginalBtn.removeAttribute("download");
     downloadOriginalBtn.classList.add("disabled");
     downloadOriginalBtn.hidden = true;
     return;
   }
   downloadOriginalBtn.href = file.downloadUrl || file.previewUrl;
-  downloadOriginalBtn.download = file.fileName || "求才登記表";
   downloadOriginalBtn.classList.remove("disabled");
   downloadOriginalBtn.hidden = false;
 }
@@ -281,10 +272,6 @@ function renderOriginalFiles(files, caseData) {
           <span>${escapeHtml(file.mimeType || file.fileType || "")}</span>
         </div>
         ${preview}
-        <div class="action-row">
-          <a class="secondary link-button" href="${downloadUrl}" target="_blank" rel="noreferrer">開啟求才登記表</a>
-          <a class="secondary link-button" href="${downloadUrl}" download="${title}">下載原始檔</a>
-        </div>
         <p class="file-fallback hidden">檔案預覽載入失敗</p>
       </article>
     `;
