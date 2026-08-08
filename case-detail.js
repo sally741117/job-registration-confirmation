@@ -2,6 +2,7 @@ let currentCase = null;
 let pendingFile = null;
 let pendingFileData = null;
 let pendingUploadCaseId = "";
+let noticeUploadInProgress = false;
 
 const missingView = document.querySelector("#missingView");
 const missingTitle = document.querySelector("#missingTitle");
@@ -294,7 +295,7 @@ function renderUploadSection() {
 
 function renderNoticeData() {
   const hasNotice = Boolean(currentCase.noticeFileUrl || currentCase.noticeFileKey);
-  openNoticeLinkBtn.href = hasNotice ? helpers.noticeUrl(currentCase) : "#";
+  openNoticeLinkBtn.href = hasNotice ? helpers.buildNoticeUrl(currentCase) : "#";
   copyNoticeLinkBtn.disabled = !hasNotice;
   deleteNoticeBtn.disabled = !hasNotice;
   openNoticeLinkBtn.classList.toggle("disabled", !hasNotice);
@@ -308,7 +309,7 @@ function renderNoticeData() {
       ["檔案格式", currentCase.noticeFileType],
       ["檔案大小", helpers.fileSizeText(currentCase.noticeFileSize)],
       ["上傳者", currentCase.noticeUploadedBy || "仲介端"],
-      ["公司查看連結", helpers.noticeUrl(currentCase)]
+      ["公司查看連結", helpers.buildNoticeUrl(currentCase)]
     ]);
     const isPdf = currentCase.noticeFileType === "application/pdf";
     noticePreview.innerHTML = currentCase.noticeFileUrl ? (isPdf
@@ -390,18 +391,19 @@ async function prepareFile(file) {
 }
 
 async function uploadPendingFile() {
-  if (!pendingFileData || !pendingUploadCaseId) return;
-  const pageCaseId = helpers.getCaseIdFromUrl();
-  const latestRecord = await caseService.getCase(pageCaseId);
-  const latest = helpers.latestSubmission(latestRecord);
-  if (!latestRecord || latestRecord.caseId !== pendingUploadCaseId || pageCaseId !== pendingUploadCaseId) {
-    resetPendingFile();
-    uploadProgress.textContent = "目前案件已切換，請重新選擇檔案。";
-    return;
-  }
+  if (!pendingFileData || !pendingUploadCaseId || noticeUploadInProgress) return;
+  noticeUploadInProgress = true;
   confirmUploadBtn.disabled = true;
   uploadProgress.textContent = "上傳中...";
   try {
+    const pageCaseId = helpers.getCaseIdFromUrl();
+    const latestRecord = await caseService.getCase(pageCaseId);
+    const latest = helpers.latestSubmission(latestRecord);
+    if (!latestRecord || latestRecord.caseId !== pendingUploadCaseId || pageCaseId !== pendingUploadCaseId) {
+      resetPendingFile();
+      uploadProgress.textContent = "目前案件已切換，請重新選擇檔案。";
+      return;
+    }
     currentCase = await caseService.uploadNoticeFile(latestRecord.caseId, pendingFileData, {
       expectedCaseId: pendingUploadCaseId,
       submissionId: latest?.submissionId || "",
@@ -414,6 +416,7 @@ async function uploadPendingFile() {
     console.error("正式通知上傳失敗", error);
     uploadProgress.textContent = error.message || "上傳失敗，請重新選擇檔案。";
   } finally {
+    noticeUploadInProgress = false;
     confirmUploadBtn.disabled = false;
   }
 }
@@ -518,7 +521,7 @@ noticeDropZone.addEventListener("drop", (event) => {
 });
 confirmUploadBtn.addEventListener("click", uploadPendingFile);
 copyFormLinkBtn.addEventListener("click", () => copyText(helpers.formUrl(currentCase)));
-copyNoticeLinkBtn.addEventListener("click", () => currentCase.noticeFileUrl && copyText(helpers.noticeUrl(currentCase)));
+copyNoticeLinkBtn.addEventListener("click", () => currentCase.noticeFileUrl && copyText(helpers.buildNoticeUrl(currentCase)));
 reopenBtn.addEventListener("click", async () => {
   currentCase = await caseService.reopenForRevision(currentCase.caseId);
   resetPendingFile();

@@ -26,8 +26,8 @@ function escapeHtml(value) {
 function params() {
   const search = new URLSearchParams(window.location.search);
   return {
-    caseId: search.get("caseId") || "",
-    token: search.get("token") || ""
+    caseId: String(search.get("caseId") || "").trim(),
+    token: String(search.get("token") || "").trim()
   };
 }
 

@@ -54,6 +54,13 @@ Apps Script 目前使用工作表 `案件資料`，欄位如下：
 
 `submissionsJson` 會保留每次公司送出的回覆版本，每筆都有 `submissionId`。`latestSubmissionId` 指向最新回覆。
 
+## 公開連結 token 生命週期
+
+- 案件建立時一次產生 `formAccessToken` 與 `noticeAccessToken`，後續更新、回覆、附件上傳、查看通知及部署都不得更換。
+- `form.html` 只接受 `formAccessToken`；`notice.html` 與受保護附件只接受 `noticeAccessToken`；管理端 API 只接受管理員 Session token。
+- 前端通知網址只能透過 `helpers.buildNoticeUrl(caseRecord)` 產生，不得在各頁自行拼接或改用其他 token alias。
+- 舊案件若原本缺少 `noticeAccessToken`，首次上傳附件時會在後端鎖定區段補建一次；一旦存在便永久沿用。
+
 `hasUnreadResponse` 在公司送出時為 `true`，仲介第一次進入案件詳情頁後改為 `false`，並記錄 `responseViewedAt`。
 
 `recruitmentCount` 可為空值/null。尚未確認求才人數時，不要寫入 0；畫面、通知單與 Q&A 只會在求才人數大於 0 時顯示人數內容。

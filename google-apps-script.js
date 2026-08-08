@@ -320,7 +320,7 @@ function savePdfInfo_(caseId, pdfInfo) {
 function getPublicFormCase_(caseId, token) {
   const record = getCase_(caseId);
   if (!record) throw codedError_("CASE_NOT_FOUND", "找不到案件。");
-  if (record.formAccessToken && record.formAccessToken !== token) throw codedError_("INVALID_TOKEN", "填寫連結驗證失敗。");
+  if (normalizedAccessToken_(record.formAccessToken) !== normalizedAccessToken_(token)) throw codedError_("INVALID_TOKEN", "填寫連結驗證失敗。");
   if (record.status === "deleted") throw codedError_("CASE_DELETED", "此案件已刪除。");
   return publicCasePayload_(record);
 }
@@ -367,7 +367,7 @@ function uploadNoticeFile_(caseId, fileData, options) {
       uploadedAt: now
     }),
     noticeHistoryJson: JSON.stringify(oldNotice ? (record.noticeHistory || []).concat([oldNotice]) : (record.noticeHistory || [])),
-    noticeAccessToken: record.noticeAccessToken || generateAccessToken_()
+    noticeAccessToken: normalizedAccessToken_(record.noticeAccessToken)
   });
 }
 
@@ -411,7 +411,7 @@ function deleteNoticeFile_(caseId) {
 function validateNoticeAccess_(caseId, token) {
   const record = getCase_(caseId);
   if (!record) throw codedError_("CASE_NOT_FOUND", "找不到案件。");
-  if (record.noticeAccessToken !== token) throw codedError_("INVALID_TOKEN", "通知連結驗證失敗。");
+  if (normalizedAccessToken_(record.noticeAccessToken) !== normalizedAccessToken_(token)) throw codedError_("INVALID_TOKEN", "通知連結驗證失敗。");
   if (record.status !== "notice_ready") throw codedError_("NOTICE_NOT_READY", "求才內容尚未建立。");
   return record;
 }
@@ -569,8 +569,8 @@ function normalizeOutput_(record) {
   return {
     ...record,
     requestId: record.requestId || "",
-    formAccessToken: record.formAccessToken || "",
-    noticeAccessToken: record.noticeAccessToken || generateAccessToken_(),
+    formAccessToken: normalizedAccessToken_(record.formAccessToken),
+    noticeAccessToken: normalizedAccessToken_(record.noticeAccessToken),
     recruitmentCount: record.recruitmentCount === "" || record.recruitmentCount === null || record.recruitmentCount === undefined ? null : Number(record.recruitmentCount),
     salaryMin: Number(record.salaryMin || 0),
     salaryMax: Number(record.salaryMax || 0),
@@ -587,6 +587,10 @@ function stringify_(value) {
   if (value === undefined || value === null) return "";
   if (Array.isArray(value) || typeof value === "object") return JSON.stringify(value);
   return value;
+}
+
+function normalizedAccessToken_(value) {
+  return String(value || "").trim();
 }
 
 function generateCaseId_(companyName) {

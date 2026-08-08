@@ -249,7 +249,7 @@ async function renderCaseList(options = {}) {
           </details>
           ${(item.status === CASE_STATUS.pending || item.status === CASE_STATUS.revision_open) ? `<button class="secondary" data-action="copyForm" data-id="${item.caseId}" type="button">複製填寫連結</button><a class="secondary link-button" href="${helpers.formUrl(item)}" target="_blank" rel="noreferrer">開啟公司填寫頁</a>` : ""}
           <a class="primary link-button" href="${detailUrl(item.caseId)}">開啟案件詳情</a>
-          ${item.status === CASE_STATUS.notice_ready ? `<button class="secondary" data-action="copyNotice" data-id="${item.caseId}" type="button">複製通知查看網址</button><a class="secondary link-button" href="${helpers.noticeUrl(item)}" target="_blank" rel="noreferrer">開啟通知頁</a>` : ""}
+          ${item.status === CASE_STATUS.notice_ready ? `<button class="secondary" data-action="copyNotice" data-id="${item.caseId}" type="button">複製通知查看網址</button><a class="secondary link-button" href="${helpers.buildNoticeUrl(item)}" target="_blank" rel="noreferrer">開啟通知頁</a>` : ""}
         </div>
       </article>
     `;
@@ -355,7 +355,7 @@ caseList.addEventListener("click", async (event) => {
     return;
   }
   if (button.dataset.action === "copyForm") await copyText(helpers.formUrl(caseRecord));
-  if (button.dataset.action === "copyNotice") await copyText(helpers.noticeUrl(caseRecord));
+  if (button.dataset.action === "copyNotice") await copyText(helpers.buildNoticeUrl(caseRecord));
   if (button.dataset.action === "deleteCase") {
     const confirmed = await deleteCaseDialog.confirm(caseRecord);
     if (!confirmed) return;

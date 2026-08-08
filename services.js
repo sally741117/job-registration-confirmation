@@ -189,13 +189,15 @@ const helpers = {
     if (CONFIG.ACTIVE_STORAGE_MODE === "local") url.searchParams.set("storage", "local");
     return url.href;
   },
-  noticeUrl(caseRecord) {
-    if (!this.isValidPublicValue(caseRecord.caseId) || !this.isValidPublicValue(caseRecord.noticeAccessToken)) {
+  buildNoticeUrl(caseRecord) {
+    const caseId = String(caseRecord?.caseId || "").trim();
+    const token = String(caseRecord?.noticeAccessToken || "").trim();
+    if (!this.isValidPublicValue(caseId) || !this.isValidPublicValue(token)) {
       throw new Error("通知查看連結資料不完整，缺少有效案件編號或通知 token。");
     }
     const url = new URL(`${this.publicBaseUrl()}/notice.html`);
-    url.searchParams.set("caseId", caseRecord.caseId);
-    url.searchParams.set("token", caseRecord.noticeAccessToken || "");
+    url.searchParams.set("caseId", caseId);
+    url.searchParams.set("token", token);
     if (CONFIG.ACTIVE_STORAGE_MODE === "local") url.searchParams.set("storage", "local");
     return url.href;
   },
@@ -871,8 +873,8 @@ const caseService = {
       status: data.status || "",
       response,
       submissions,
-      formAccessToken: data.formAccessToken || data.token || data.formToken || data.fillToken || "",
-      noticeAccessToken: data.noticeAccessToken || data.noticeToken || ""
+      formAccessToken: String(data.formAccessToken || data.token || data.formToken || data.fillToken || "").trim(),
+      noticeAccessToken: String(data.noticeAccessToken || data.noticeToken || "").trim()
     };
   },
   summarizeListResponse(result) {
@@ -1215,7 +1217,7 @@ const caseService = {
       noticeUploadedBy: options.uploadedBy || "仲介端",
       noticeUpload,
       noticeHistory: oldNotice ? [...(record.noticeHistory || []), oldNotice] : (record.noticeHistory || []),
-      noticeAccessToken: record.noticeAccessToken || this.generateAccessToken()
+      noticeAccessToken: String(record.noticeAccessToken || "").trim()
     });
     return noticeFileStore.attachObjectUrl(saved);
   },
@@ -1249,13 +1251,13 @@ const caseService = {
   async validateNoticeAccess(caseId, token) {
     if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.normalizeCaseRecord(await remoteClient.request("getPublicNotice", { caseId, token }));
     const record = await this.getCase(caseId);
-    if (!record || record.noticeAccessToken !== token || record.status !== CASE_STATUS.notice_ready) return null;
+    if (!record || String(record.noticeAccessToken || "").trim() !== String(token || "").trim() || record.status !== CASE_STATUS.notice_ready) return null;
     return noticeFileStore.attachObjectUrl(record);
   },
   async recordNoticeView(caseId, token) {
     if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.normalizeCaseRecord(await remoteClient.request("recordNoticeView", { caseId, token }));
     const record = await this.getCase(caseId);
-    if (!record || record.noticeAccessToken !== token || record.status !== CASE_STATUS.notice_ready) return null;
+    if (!record || String(record.noticeAccessToken || "").trim() !== String(token || "").trim() || record.status !== CASE_STATUS.notice_ready) return null;
     const now = new Date().toISOString();
     const updated = await this.updateCase({
       ...record,
