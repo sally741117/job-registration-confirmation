@@ -13,6 +13,10 @@ const useLocalModeBtn = document.querySelector("#useLocalModeBtn");
 const connectionResult = document.querySelector("#connectionResult");
 const caseFormStatus = document.querySelector("#caseFormStatus");
 const createCaseButton = caseForm?.querySelector('button[type="submit"]');
+const selectAllCases = document.querySelector("#selectAllCases");
+const selectedCaseCount = document.querySelector("#selectedCaseCount");
+const bulkDeleteCasesBtn = document.querySelector("#bulkDeleteCasesBtn");
+const bulkDeleteStatus = document.querySelector("#bulkDeleteStatus");
 
 let createdCase = null;
 let createInProgress = false;
@@ -20,9 +24,114 @@ let createRequestId = "";
 let highlightedCaseId = "";
 let caseListLoadSerial = 0;
 let caseListLoading = false;
+let visibleCases = [];
+let bulkDeleteInProgress = false;
+const selectedCaseIds = new Set();
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function hasFormalHistory(caseRecord = {}) {
+  const submissions = Array.isArray(caseRecord.submissions) ? caseRecord.submissions : [];
+  return [CASE_STATUS.submitted, CASE_STATUS.preparing_notice, CASE_STATUS.notice_ready].includes(caseRecord.status)
+    || submissions.length > 0
+    || Boolean(caseRecord.latestSubmissionId)
+    || Boolean(caseRecord.noticeViewed || Number(caseRecord.viewCount || 0) > 0)
+    || Boolean(caseRecord.noticeFileId || caseRecord.noticeFileName || caseRecord.noticeFileUrl || caseRecord.noticeUploadedAt);
+}
+
+function setBulkDeleteStatus(message, type = "") {
+  if (!bulkDeleteStatus) return;
+  bulkDeleteStatus.textContent = message || "";
+  bulkDeleteStatus.className = `hint bulk-delete-status ${type ? `form-status--${type}` : ""}`.trim();
+}
+
+function syncCaseSelectionUi() {
+  const visibleIds = new Set(visibleCases.map((item) => item.caseId));
+  [...selectedCaseIds].forEach((caseId) => {
+    if (!visibleIds.has(caseId)) selectedCaseIds.delete(caseId);
+  });
+  const selectedCount = selectedCaseIds.size;
+  if (selectAllCases) {
+    selectAllCases.checked = visibleCases.length > 0 && selectedCount === visibleCases.length;
+    selectAllCases.indeterminate = selectedCount > 0 && selectedCount < visibleCases.length;
+    selectAllCases.disabled = bulkDeleteInProgress || visibleCases.length === 0;
+  }
+  if (selectedCaseCount) selectedCaseCount.textContent = `已選 ${selectedCount} 筆`;
+  if (bulkDeleteCasesBtn) {
+    bulkDeleteCasesBtn.disabled = bulkDeleteInProgress || selectedCount === 0;
+    bulkDeleteCasesBtn.textContent = bulkDeleteInProgress ? "刪除中…" : "批次刪除";
+  }
+  caseList.querySelectorAll("[data-case-id]").forEach((card) => {
+    const isSelected = selectedCaseIds.has(card.dataset.caseId);
+    card.classList.toggle("is-selected", isSelected);
+    const checkbox = card.querySelector("[data-case-select]");
+    if (checkbox) checkbox.checked = isSelected;
+  });
+}
+
+function confirmBulkDelete(caseRecords) {
+  return new Promise((resolve) => {
+    const protectedCount = caseRecords.filter(hasFormalHistory).length;
+    const displayed = caseRecords.slice(0, 10);
+    const remaining = Math.max(0, caseRecords.length - displayed.length);
+    const overlay = document.createElement("div");
+    overlay.className = "delete-dialog-backdrop";
+    overlay.innerHTML = `
+      <section class="delete-dialog bulk-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="bulkDeleteTitle" aria-describedby="bulkDeleteDescription">
+        <h2 id="bulkDeleteTitle">批次刪除案件</h2>
+        <p id="bulkDeleteDescription">確定要刪除選取的 ${caseRecords.length} 筆案件嗎？</p>
+        ${protectedCount ? '<p class="delete-warning bulk-delete-warning">選取案件中包含已有回覆或正式處理紀錄的案件，請再次確認。</p>' : ""}
+        <ul class="bulk-delete-summary">
+          ${displayed.map((item) => `
+            <li>
+              <strong>${escapeHtml(item.companyName || "未提供公司名稱")}</strong>
+              <span class="breakable">${escapeHtml(item.caseId)}</span>
+              <span class="status ${escapeHtml(item.status)}">${escapeHtml(helpers.statusLabel(item.status))}</span>
+            </li>
+          `).join("")}
+        </ul>
+        ${remaining ? `<p class="bulk-delete-more">另有 ${remaining} 筆</p>` : ""}
+        <div class="delete-dialog-actions">
+          <button type="button" class="secondary" data-cancel>取消</button>
+          <button type="button" class="danger" data-confirm>確認刪除 ${caseRecords.length} 筆案件</button>
+        </div>
+      </section>
+    `;
+    const previousFocus = document.activeElement;
+    let settled = false;
+    const cleanup = (confirmed) => {
+      if (settled) return;
+      settled = true;
+      document.removeEventListener("keydown", onKeydown);
+      overlay.remove();
+      document.body.classList.remove("modal-open");
+      if (previousFocus instanceof HTMLElement) previousFocus.focus();
+      resolve(confirmed);
+    };
+    const onKeydown = (event) => {
+      if (event.key === "Escape") cleanup(false);
+    };
+    overlay.querySelector("[data-cancel]").addEventListener("click", () => cleanup(false));
+    overlay.querySelector("[data-confirm]").addEventListener("click", () => cleanup(true));
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) cleanup(false);
+    });
+    document.addEventListener("keydown", onKeydown);
+    document.body.classList.add("modal-open");
+    document.body.appendChild(overlay);
+    overlay.querySelector("[data-cancel]").focus();
+  });
+}
 
 function selected(name, root = caseForm) {
   return $(`[name="${name}"]:checked`, root)?.value || "";
@@ -65,12 +174,15 @@ function generateRequestId() {
 
 function renderListError(error) {
   const message = messageOf(error, "案件列表載入失敗，請稍後再試。");
+  visibleCases = [];
+  selectedCaseIds.clear();
   caseList.innerHTML = `
     <div class="empty">
       <p>案件列表更新失敗：${message}</p>
       <button class="secondary" data-action="retryList" type="button">重新載入</button>
     </div>
   `;
+  syncCaseSelectionUi();
 }
 
 function withTimeout(promise, timeoutMs, message) {
@@ -214,6 +326,8 @@ async function renderCaseList(options = {}) {
     return false;
   }
   if (loadSerial !== caseListLoadSerial) return false;
+  visibleCases = cases;
+  syncCaseSelectionUi();
   if (
     highlightedCaseId
     && cases.some((item) => item.caseId === highlightedCaseId)
@@ -224,6 +338,7 @@ async function renderCaseList(options = {}) {
   lastUpdatedText.textContent = `最後更新：${helpers.displayDateTime(new Date().toISOString())}`;
   if (!cases.length) {
     caseList.innerHTML = `<p class="empty">目前尚未建立案件。</p>`;
+    syncCaseSelectionUi();
     return true;
   }
   caseList.innerHTML = cases.map((item) => {
@@ -231,7 +346,10 @@ async function renderCaseList(options = {}) {
     const isNew = highlightedCaseId && item.caseId === highlightedCaseId;
     const statusClass = Object.values(CASE_STATUS).includes(item.status) ? item.status : "invalid";
     return `
-      <article class="case-item admin-list-item case-status-${statusClass} ${isNew ? "newly-created" : ""}" data-case-id="${item.caseId}">
+      <article class="case-item admin-list-item case-status-${statusClass} ${isNew ? "newly-created" : ""} ${selectedCaseIds.has(item.caseId) ? "is-selected" : ""}" data-case-id="${escapeHtml(item.caseId)}">
+        <label class="case-selection-control" title="選取案件">
+          <input type="checkbox" data-case-select value="${escapeHtml(item.caseId)}" ${selectedCaseIds.has(item.caseId) ? "checked" : ""} aria-label="選取 ${escapeHtml(item.companyName || item.caseId)}">
+        </label>
         <div><small>公司名稱</small><strong>${item.companyName}</strong></div>
         <div><small>案件編號</small><span class="breakable">${item.caseId}</span></div>
         <div><small>工作地點</small><span>${item.workAddress || ""}</span></div>
@@ -254,6 +372,7 @@ async function renderCaseList(options = {}) {
       </article>
     `;
   }).join("");
+  syncCaseSelectionUi();
   return true;
   } finally {
     if (loadSerial === caseListLoadSerial) {
@@ -333,6 +452,75 @@ resetFormBtn.addEventListener("click", () => {
   caseForm.reset();
   createdPanel.classList.add("hidden");
   createdCase = null;
+});
+
+caseList.addEventListener("change", (event) => {
+  const checkbox = event.target.closest("[data-case-select]");
+  if (!checkbox || bulkDeleteInProgress) return;
+  if (checkbox.checked) selectedCaseIds.add(checkbox.value);
+  else selectedCaseIds.delete(checkbox.value);
+  setBulkDeleteStatus("");
+  syncCaseSelectionUi();
+});
+
+selectAllCases?.addEventListener("change", () => {
+  if (bulkDeleteInProgress) return;
+  const shouldSelectAll = selectAllCases.checked;
+  visibleCases.forEach((item) => {
+    if (shouldSelectAll) selectedCaseIds.add(item.caseId);
+    else selectedCaseIds.delete(item.caseId);
+  });
+  setBulkDeleteStatus("");
+  syncCaseSelectionUi();
+});
+
+bulkDeleteCasesBtn?.addEventListener("click", async () => {
+  if (bulkDeleteInProgress) return;
+  const selectedRecords = visibleCases.filter((item) => selectedCaseIds.has(item.caseId));
+  if (!selectedRecords.length) return;
+  const confirmed = await confirmBulkDelete(selectedRecords);
+  if (!confirmed) return;
+
+  const scrollPosition = window.scrollY;
+  bulkDeleteInProgress = true;
+  setBulkDeleteStatus(`正在刪除 ${selectedRecords.length} 筆案件…`, "loading");
+  syncCaseSelectionUi();
+  try {
+    const result = await caseService.bulkDeleteCases(selectedRecords.map((item) => item.caseId));
+    const succeeded = Array.isArray(result?.succeeded) ? result.succeeded : [];
+    const failed = Array.isArray(result?.failed) ? result.failed : [];
+    const succeededIds = new Set(succeeded.map((item) => String(item?.caseId || item || "")).filter(Boolean));
+    const failedIds = failed.map((item) => String(item?.caseId || item || "")).filter(Boolean);
+
+    if (createdCase && succeededIds.has(createdCase.caseId)) {
+      createdCase = null;
+      createdPanel.classList.add("hidden");
+    }
+    visibleCases = visibleCases.filter((item) => !succeededIds.has(item.caseId));
+    succeededIds.forEach((caseId) => caseList.querySelector(`[data-case-id="${CSS.escape(caseId)}"]`)?.remove());
+    selectedCaseIds.clear();
+    syncCaseSelectionUi();
+
+    const listUpdated = await renderCaseList({ force: true, silent: true });
+    window.requestAnimationFrame(() => window.scrollTo({ top: scrollPosition, behavior: "auto" }));
+
+    if (failedIds.length) {
+      setBulkDeleteStatus(
+        `已刪除 ${succeededIds.size} 筆，${failedIds.length} 筆刪除失敗：${failedIds.join("、")}`,
+        "warning"
+      );
+    } else if (!listUpdated) {
+      setBulkDeleteStatus(`已刪除 ${succeededIds.size} 筆案件，案件列表重新載入失敗，請稍後重新整理。`, "warning");
+    } else {
+      setBulkDeleteStatus(`已刪除 ${succeededIds.size} 筆案件`, "success");
+    }
+  } catch (error) {
+    console.error("批次刪除案件失敗", error);
+    setBulkDeleteStatus(error.message || "批次刪除失敗，請稍後再試。", "error");
+  } finally {
+    bulkDeleteInProgress = false;
+    syncCaseSelectionUi();
+  }
 });
 
 caseList.addEventListener("click", async (event) => {

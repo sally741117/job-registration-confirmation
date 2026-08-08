@@ -462,6 +462,7 @@ const remoteClient = {
       "updateCase",
       "updateCaseDetails",
       "deleteCase",
+      "bulkDeleteCases",
       "reopenRevision",
       "reopenForRevision",
       "markResponseViewed",
@@ -1088,6 +1089,31 @@ const caseService = {
     };
     localStore.writeCases(cases);
     return cases[index];
+  },
+  async bulkDeleteCases(caseIds = []) {
+    const normalizedIds = [...new Set((Array.isArray(caseIds) ? caseIds : [])
+      .map((caseId) => String(caseId || "").trim())
+      .filter(Boolean))];
+    if (!normalizedIds.length) return { requested: 0, succeeded: [], failed: [] };
+    if (CONFIG.ACTIVE_STORAGE_MODE === "remote") {
+      const result = await remoteClient.request(
+        "bulkDeleteCases",
+        { caseIds: normalizedIds },
+        { timeoutMs: 120000 }
+      );
+      return {
+        requested: Number(result?.requested || normalizedIds.length),
+        succeeded: Array.isArray(result?.succeeded) ? result.succeeded : [],
+        failed: Array.isArray(result?.failed) ? result.failed : []
+      };
+    }
+    const settled = await Promise.allSettled(normalizedIds.map((caseId) => this.deleteCase(caseId)));
+    return settled.reduce((summary, outcome, index) => {
+      const caseId = normalizedIds[index];
+      if (outcome.status === "fulfilled") summary.succeeded.push({ caseId });
+      else summary.failed.push({ caseId, code: "DELETE_FAILED", message: outcome.reason?.message || "刪除失敗" });
+      return summary;
+    }, { requested: normalizedIds.length, succeeded: [], failed: [] });
   },
   async updateCase(updatedCase) {
     if (CONFIG.ACTIVE_STORAGE_MODE === "remote") return this.normalizeCaseRecord(await remoteClient.request("updateCase", updatedCase));

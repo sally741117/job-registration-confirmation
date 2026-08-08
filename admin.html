@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>建立求才確認案件</title>
-  <link rel="stylesheet" href="./styles.css?v=20260808-tokenlife1">
-  <script defer src="./services.js?v=20260808-tokenlife1"></script>
-  <script defer src="./admin.js?v=20260808-tokenlife1"></script>
+  <link rel="stylesheet" href="./styles.css?v=20260808-bulkdelete1">
+  <script defer src="./services.js?v=20260808-bulkdelete1"></script>
+  <script defer src="./admin.js?v=20260808-bulkdelete1"></script>
 </head>
 <body class="admin-body">
   <main class="shell admin-shell">
@@ -65,6 +65,12 @@
     <section class="card">
       <div class="section-title"><span>2</span><h2>案件列表</h2></div>
       <p class="hint">新回覆會自動排在最上方，點進案件詳情後會標記為已查看。</p>
+      <div id="caseBulkToolbar" class="case-bulk-toolbar" aria-label="案件批次操作">
+        <label class="case-select-all"><input id="selectAllCases" type="checkbox">全選</label>
+        <span id="selectedCaseCount" class="case-selected-count" aria-live="polite">已選 0 筆</span>
+        <button id="bulkDeleteCasesBtn" class="danger" type="button" disabled>批次刪除</button>
+      </div>
+      <div id="bulkDeleteStatus" class="hint bulk-delete-status" role="status" aria-live="polite"></div>
       <div id="caseList" class="case-list"></div>
     </section>
   </main>
