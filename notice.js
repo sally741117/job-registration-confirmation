@@ -134,7 +134,7 @@ function openFileModal(file) {
 }
 
 function openFullContentModal() {
-  const items = qAndAItems();
+  const items = qAndAItems().filter((item) => !/(?:公開求才電話|台灣就業通).*(?:不得拒絕|請勿直接拒絕)/u.test(item));
   const contentHtml = items.length
     ? `<ul class="full-content-list">${items.map((item) => {
         const separatorIndex = item.lastIndexOf("：");
@@ -143,13 +143,10 @@ function openFullContentModal() {
         const answer = hasAnswer ? item.slice(separatorIndex + 1).trim() : "";
         const normalizedAnswer = answer.replace(/[。．.]+$/u, "").trim();
         const isWorkLocation = /^求才(?:工作)?地點[：:]/u.test(question.trim());
-        const isNoRefusalAnswer = normalizedAnswer === "好" && /(?:不得拒絕|請勿直接拒絕)/u.test(question);
-        const questionHtml = isNoRefusalAnswer
-          ? escapeHtml(question).replace(/(不得拒絕|請勿直接拒絕)/u, '<span class="notice-emphasis">$1</span>')
-          : escapeHtml(question);
+        const questionHtml = escapeHtml(question);
         const answerHtml = isWorkLocation
           ? `<span class="notice-answer is-emphasis">${escapeHtml(normalizedAnswer)}</span>${escapeHtml(answer.slice(normalizedAnswer.length))}`
-          : `<span class="notice-answer ${normalizedAnswer === "是" || isNoRefusalAnswer ? "is-emphasis" : ""}">${escapeHtml(answer)}</span>`;
+          : `<span class="notice-answer ${normalizedAnswer === "是" ? "is-emphasis" : ""}">${escapeHtml(answer)}</span>`;
         return `
           <li>
             <span class="notice-question">${questionHtml}</span>
